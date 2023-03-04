@@ -5,11 +5,13 @@
 
 import sys
 import os
-import re
+# import re
 
-if sys.hexversion < 0x02030000:
-    print("This script needs python version >= 2.3")
-    sys.exit(1)
+import paramiko
+
+# if sys.hexversion < 0x02030000:
+#     print("This script needs python version >= 2.3")
+#     sys.exit(1)
 
 from optparse import OptionParser
 import base64
@@ -285,43 +287,43 @@ class NetconfSSH(NetconfSSHLikeTransport):
         self.ssh.close()
         return True
 		
-class NetconfTCP(NetconfSSHLikeTransport):
+# class NetconfTCP(NetconfSSHLikeTransport):
 	
-    def __init__(self, hostname, port, username, groups, suplgids):
-        NetconfSSHLikeTransport.__init__(self)
-        self.hostname = str(hostname)
-        self.port = int(port)
-        self.username = username
-        self.groups = groups
-        self.suplgids = suplgids
+#     def __init__(self, hostname, port, username, groups, suplgids):
+#         NetconfSSHLikeTransport.__init__(self)
+#         self.hostname = str(hostname)
+#         self.port = int(port)
+#         self.username = username
+#         self.groups = groups
+#         self.suplgids = suplgids
 
-    def connect(self):
-        self.sock = create_connection(self.hostname, self.port)
-        sockname = self.sock.getsockname()
-        self.sock.send("["+self.username+";%s;tcp;%d;%d;%s;%s;%s;]\n"%(sockname[0], os.getuid(), os.getgid(), self.suplgids, os.getenv("HOME", "/tmp"), self.groups)) 
+#     def connect(self):
+#         self.sock = create_connection(self.hostname, self.port)
+#         sockname = self.sock.getsockname()
+#         self.sock.send("["+self.username+";%s;tcp;%d;%d;%s;%s;%s;]\n"%(sockname[0], os.getuid(), os.getgid(), self.suplgids, os.getenv("HOME", "/tmp"), self.groups)) 
 		
-    def _send(self, buf):
-        try:
-            self.sock.send(buf)
-        except socket.error as x:
-            print('socket error:', str(x))
+#     def _send(self, buf):
+#         try:
+#             self.sock.send(buf)
+#         except socket.error as x:
+#             print('socket error:', str(x))
 	
-    def _send_eom(self):
-        self._send(self._get_eom())
+#     def _send_eom(self):
+#         self._send(self._get_eom())
 
-    def _recv(self, bufsiz):
-        s = self.sock.recv(bufsiz)
-        if self.trace:
-            sys.stdout.write(s)
-            sys.stdout.flush()
-        return s
+#     def _recv(self, bufsiz):
+#         s = self.sock.recv(bufsiz)
+#         if self.trace:
+#             sys.stdout.write(s)
+#             sys.stdout.flush()
+#         return s
 
-    def _set_timeout(self, timeout=None):
-        self.sock.settimeout(timeout)
+#     def _set_timeout(self, timeout=None):
+#         self.sock.settimeout(timeout)
 
-    def close(self):
-        self.sock.close()
-        return True
+#     def close(self):
+#         self.sock.close()
+#         return True
 
 # sort-of socket.create_connection() (new in 2.6)
 def create_connection(host, port):
@@ -491,13 +493,12 @@ def create_subscription_msg(stream, xpath):
         else:
             fstr = "<filter type='xpath' select='%s'/>" % xpath
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <create-subscription xmlns="urn:ietf:params:xml:ns:netconf:notification:1.0">
-    <stream>%s</stream>
-    %s
-  </create-subscription>
-</rpc>''' % (stream, fstr)
-
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <create-subscription xmlns="urn:ietf:params:xml:ns:netconf:notification:1.0">
+                        <stream>%s</stream>
+                        %s
+                    </create-subscription>
+                </rpc>''' % (stream, fstr)
 
 def read_msg():
     print("\n* Enter a NETCONF operation, end with an empty line")
@@ -532,407 +533,245 @@ def strip(node):
         else:
             c = c.nextSibling
 
-# main
-usage = """%prog [-h | --help] [options] [cmdoptions | <filename> | -]
-    
-Where <filename> is a file containing a NETCONF XML command session.
-If <filename> is not given, one of the Command Options must be given.
-Filename - means standard input.
-"""
+def my_main() :
+    """
+    My Main
+    """
+    host ="10.3.10.1"
+    port = 2022
+    username = "admin"
+    password = "admin"
+    privKeyFile = ""
+    privKeyType = ""
+    c = NetconfSSH(host, port, username, password, "", "", 
+                   privKeyFile, privKeyType)
 
-parser = OptionParser(usage)
-parser.add_option("-v", "--version", dest="version",
-                  help="force NETCONF version 1.0 or 1.1")
-parser.add_option("-u", "--user", dest="username", default="admin",
-		  help="username")
-parser.add_option("-p", "--password", dest="password", default="admin",
-		  help="password")
-parser.add_option("--proto", dest="proto", default="ssh",
-		  help="Which transport protocol to use, one of ssh or tcp")
-parser.add_option("--host", dest="host", default="localhost",
-                  help="NETCONF agent hostname")
-parser.add_option("--port", dest="port", default=2022, type="int",
-                  help="NETCONF agent SSH port")
-parser.add_option("-s", "--outputStyle", dest="style", default="default",
-                  help="Display output in: raw, plain, pretty, all, " \
-                       "or noaaa format")
-parser.add_option("--iter", dest="iter", default=1, type="int",
-                  help="Sends the same request ITER times.  Useful only in" \
-                  "test scripts")
-parser.add_option("-i", "--interactive", dest="interactive", action="store_true")
+    # connect to the NETCONF server
+    c.connect()
 
-sshopts = parser.add_option_group("SSH Options")
-sshopts.add_option("--privKeyType", dest="privKeyType", default="",
-                   help="type of private key, rsa or dss")
-sshopts.add_option("--privKeyFile", dest="privKeyFile", default="",
-                   help="file which contains the private key")
+    versions = ['1.0']
 
-tcpopts = parser.add_option_group("TCP Options")
-tcpopts.add_option("-g", "--groups", dest="groups", default="", 
-                   help="Set group membership for user - comma separated string")
-tcpopts.add_option("-G", "--sup-groups", dest="supgroups", default="", 
-                   help="Set supplementary UNIX group ids for user - comma " \
-                   "separated string of integers")
-
-
-cmdopts = parser.add_option_group("NETCONF Command Options")
-cmdopts.add_option("--hello", dest="hello", action="store_true",
-                   help="Connect to the server and print its capabilities")
-cmdopts.add_option("--get", dest="get", action="store_true",
-                   help="Takes an optional -x argument for XPath filtering")
-cmdopts.add_option("--get-config", action="callback", callback=get_config_opt,
-                   help="Takes an optional --db argument, default is 'running'"\
-                   ", and an optional -x argument for XPath filtering")
-cmdopts.add_option("--db", dest="db", default="running",
-                   help="Database for commands that operate on a database."),
-cmdopts.add_option("--with-defaults", dest="wdefaults", default="",
-                   help="One of 'explicit', 'trim', 'report-all' or "\
-                   "'report-all-tagged'.  Use with --get, --get-config, or "\
-                   "--copy-config.")
-cmdopts.add_option("--with-inactive", dest="winactive", action="store_true",
-                   help="Send with-inactive parameter.  Use with --get, "\
-                   "--get-config, --copy-config, or --edit-cinfig.")
-cmdopts.add_option("-x", "--xpath", dest="xpath", default="",
-                   action="callback", callback=opt_xpath,
-                   help="XPath filter to be used with --get, --get-config, " \
-                   "and --create-subscription")
-cmdopts.add_option("--kill-session", dest="kill_session", default="",
-                   help="Takes a session-id as argument.")
-cmdopts.add_option("--discard-changes", dest="discard_changes",
-                   action="store_true")
-cmdopts.add_option("--commit", dest="commit",
-                   action="store_true")
-cmdopts.add_option("--validate", dest="validate",
-                   action="store_true",
-                   help="Takes an optional --db argument, default is 'running'.")
-cmdopts.add_option("--copy-running-to-startup", dest="copy_running_to_startup",
-                   action="store_true")
-cmdopts.add_option("--copy-config", dest="copy", default="",
-                   help="Takes a filename as argument. The contents of the file"\
-                   " is data for a single NETCONF copy-config operation"\
-                   " (put into the <config> XML element)."\
-                   " Takes an optional --db argument, default is 'running'.")
-cmdopts.add_option("--edit-config", dest="edit", default="",
-                   help="Takes a filename as argument. The contents of the file"\
-                   " is data for a single NETCONF edit-config operation"\
-                   " (put into the <config> XML element)."\
-                   " Takes an optional --db argument, default is 'running'.")
-cmdopts.add_option("--get-schema", dest="get_schema",
-                   help="Takes an identifier (typically YANG module name) "\
-                   "as parameter")
-cmdopts.add_option("--create-subscription", dest="create_subscription",
-                   help="Takes a stream name as parameter, and an optional " \
-                   "-x for XPath filtering")
-cmdopts.add_option("--rpc", dest="rpc", default="",
-                   help="Takes a filename as argument. The contents of the file"\
-                   " is a single NETCONF rpc operation (w/o the surrounding"\
-                   " <rpc>).")
-
-(o, args) = parser.parse_args()
-
-if (o.wdefaults != "" and
-    o.wdefaults not in ("trim", "explicit", "report-all", "report-all-tagged",
-                        "true", "false")):
-    print("Bad --with-defaults value: ", o.wdefaults)
-    sys.exit(1)
-
-if len(args) == 1:
-    filename = args[0]
-else:
-    filename = None
-
-cmdf = None
-dataf = None
-# Read the command file
-if filename:
-    if filename == '-':
-        cmdf = sys.stdin
-    else:
-        cmdf = open(filename, "r")
-    msg = None
-elif o.get:
-    msg = get_msg("get", None, o.xpath, o.wdefaults, o.winactive)
-elif hasattr(o, "getConfig"):
-    cmd = "get-config"
-    if o.getConfig == "default":
-        db = o.db
-    else:
-        db = o.getConfig
-    msg = get_msg(cmd, db, o.xpath, o.wdefaults, o.winactive)
-elif o.rpc != "":
-    dataf = open(o.rpc, "r")
-    msg = None
-elif o.edit != "":
-    dataf = open(o.edit, "r")
-    msg = None
-elif o.copy != "":
-    dataf = open(o.copy, "r")
-    msg = None
-elif o.kill_session != "":
-    msg = kill_session_msg(o.kill_session)
-elif o.discard_changes:
-    msg = discard_changes_msg()
-elif o.commit:
-    msg = commit_msg()
-elif o.validate:
-    msg = validate_msg(o.db)
-elif o.copy_running_to_startup:
-    msg = copy_running_to_startup_msg()
-elif o.get_schema is not None:
-    msg = get_schema_msg(o.get_schema)
-elif o.create_subscription is not None:
-    msg = create_subscription_msg(o.create_subscription, o.xpath)
-elif o.hello:
-    msg = None
-elif o.interactive:
-    pass
-else:
-    parser.error("a filename or a command option is required")
-
-# create the transport object
-if o.proto == "ssh":
-    try:
-        import paramiko
-    except:
-        print("You must install the python ssh implementation paramiko")
-        print("in order to use ssh.")
-        sys.exit(1)
-
-    c = NetconfSSH(o.host, o.port, o.username, o.password, "", "", 
-                   o.privKeyFile, o.privKeyType)
-else:
-    c = NetconfTCP(o.host, o.port, o.username, o.groups, o.supgroups)
-
-if o.style == "raw":
-    c.trace = True
-
-# connect to the NETCONF server
-c.connect()
-
-# figure out which versions to advertise
-versions = []
-if cmdf is not None and o.version is None:
-    # backwards compat - no version specified, and everything is
-    # done from file.  assume this is 1.0.
-    versions.append('1.0')
-else:    
-    if o.version == '1.0' or o.version is None:
-        versions.append('1.0')
-    if o.version == '1.1' or o.version is None:
-        versions.append('1.1')
-
-# send our hello unless we do everything from the file
-if cmdf is None:
     c.send_msg(hello_msg(versions))
 
-# read the server's hello
-hello_reply = c.recv_msg()
+    # read the server's hello
+    hello_reply = c.recv_msg()
 
-# parse the hello message to figure out which framing
-# protocol to use
-d = xml.dom.minidom.parseString(hello_reply)
+    # parse the hello message to figure out which framing
+    # protocol to use
+    d = xml.dom.minidom.parseString(hello_reply)
 
-if d is not None:
-    print(d.toprettyxml())
-sys.exit(0)
+    if d is not None:
+        print(d.toprettyxml())
+
+    sys.exit(0)
 
 
-if d is not None:
-    d = d.firstChild
-if d is not None:
-    strip(d)
-    if (d.namespaceURI == nc_ns and
-        d.localName == 'hello' and
-        d.firstChild is not None):
-        d = d.firstChild
-        strip(d)
-        if (d.namespaceURI == nc_ns and
-            d.localName == 'capabilities'):
-            d = d.firstChild
-            strip(d)
-            while (d is not None):
-                if (d.namespaceURI == nc_ns and
-                    d.localName == 'capability'):
-                    if ('1.1' in versions and
-                        d.firstChild.nodeValue.strip() == base_1_1):
-                        # switch to new framing
-                        c.framing = FRAMING_1_1
-                d = d.nextSibling
+def original_main() :
+    # main
+    usage = """%prog [-h | --help] [options] [cmdoptions | <filename> | -]
+        
+    Where <filename> is a file containing a NETCONF XML command session.
+    If <filename> is not given, one of the Command Options must be given.
+    Filename - means standard input.
+    """
 
-if cmdf is not None or dataf is not None:
-    # Send the request from file
-    if cmdf is not None:
-        f = cmdf
-        # use raw send function; do not add framing
-        send = c._send
+    parser = OptionParser(usage)
+    parser.add_option("-v", "--version", dest="version",
+                    help="force NETCONF version 1.0 or 1.1")
+    parser.add_option("-u", "--user", dest="username", default="admin",
+            help="username")
+    parser.add_option("-p", "--password", dest="password", default="admin",
+            help="password")
+    parser.add_option("--proto", dest="proto", default="ssh",
+            help="Which transport protocol to use, one of ssh or tcp")
+    parser.add_option("--host", dest="host", default="localhost",
+                    help="NETCONF agent hostname")
+    parser.add_option("--port", dest="port", default=2022, type="int",
+                    help="NETCONF agent SSH port")
+    parser.add_option("-s", "--outputStyle", dest="style", default="default",
+                    help="Display output in: raw, plain, pretty, all, " \
+                        "or noaaa format")
+    parser.add_option("--iter", dest="iter", default=1, type="int",
+                    help="Sends the same request ITER times.  Useful only in" \
+                    "test scripts")
+    parser.add_option("-i", "--interactive", dest="interactive", action="store_true")
+
+    sshopts = parser.add_option_group("SSH Options")
+    sshopts.add_option("--privKeyType", dest="privKeyType", default="",
+                    help="type of private key, rsa or dss")
+    sshopts.add_option("--privKeyFile", dest="privKeyFile", default="",
+                    help="file which contains the private key")
+
+    tcpopts = parser.add_option_group("TCP Options")
+    tcpopts.add_option("-g", "--groups", dest="groups", default="", 
+                    help="Set group membership for user - comma separated string")
+    tcpopts.add_option("-G", "--sup-groups", dest="supgroups", default="", 
+                    help="Set supplementary UNIX group ids for user - comma " \
+                    "separated string of integers")
+
+
+    cmdopts = parser.add_option_group("NETCONF Command Options")
+    cmdopts.add_option("--hello", dest="hello", action="store_true",
+                    help="Connect to the server and print its capabilities")
+    cmdopts.add_option("--get", dest="get", action="store_true",
+                    help="Takes an optional -x argument for XPath filtering")
+    cmdopts.add_option("--get-config", action="callback", callback=get_config_opt,
+                    help="Takes an optional --db argument, default is 'running'"\
+                    ", and an optional -x argument for XPath filtering")
+    cmdopts.add_option("--db", dest="db", default="running",
+                    help="Database for commands that operate on a database."),
+    cmdopts.add_option("--with-defaults", dest="wdefaults", default="",
+                    help="One of 'explicit', 'trim', 'report-all' or "\
+                    "'report-all-tagged'.  Use with --get, --get-config, or "\
+                    "--copy-config.")
+    cmdopts.add_option("--with-inactive", dest="winactive", action="store_true",
+                    help="Send with-inactive parameter.  Use with --get, "\
+                    "--get-config, --copy-config, or --edit-cinfig.")
+    cmdopts.add_option("-x", "--xpath", dest="xpath", default="",
+                    action="callback", callback=opt_xpath,
+                    help="XPath filter to be used with --get, --get-config, " \
+                    "and --create-subscription")
+    cmdopts.add_option("--kill-session", dest="kill_session", default="",
+                    help="Takes a session-id as argument.")
+    cmdopts.add_option("--discard-changes", dest="discard_changes",
+                    action="store_true")
+    cmdopts.add_option("--commit", dest="commit",
+                    action="store_true")
+    cmdopts.add_option("--validate", dest="validate",
+                    action="store_true",
+                    help="Takes an optional --db argument, default is 'running'.")
+    cmdopts.add_option("--copy-running-to-startup", dest="copy_running_to_startup",
+                    action="store_true")
+    cmdopts.add_option("--copy-config", dest="copy", default="",
+                    help="Takes a filename as argument. The contents of the file"\
+                    " is data for a single NETCONF copy-config operation"\
+                    " (put into the <config> XML element)."\
+                    " Takes an optional --db argument, default is 'running'.")
+    cmdopts.add_option("--edit-config", dest="edit", default="",
+                    help="Takes a filename as argument. The contents of the file"\
+                    " is data for a single NETCONF edit-config operation"\
+                    " (put into the <config> XML element)."\
+                    " Takes an optional --db argument, default is 'running'.")
+    cmdopts.add_option("--get-schema", dest="get_schema",
+                    help="Takes an identifier (typically YANG module name) "\
+                    "as parameter")
+    cmdopts.add_option("--create-subscription", dest="create_subscription",
+                    help="Takes a stream name as parameter, and an optional " \
+                    "-x for XPath filtering")
+    cmdopts.add_option("--rpc", dest="rpc", default="",
+                    help="Takes a filename as argument. The contents of the file"\
+                    " is a single NETCONF rpc operation (w/o the surrounding"\
+                    " <rpc>).")
+
+
+    (o, args) = parser.parse_args()
+
+    if (o.wdefaults != "" and
+        o.wdefaults not in ("trim", "explicit", "report-all", "report-all-tagged",
+                            "true", "false")):
+        print("Bad --with-defaults value: ", o.wdefaults)
+        sys.exit(1)
+
+    if len(args) == 1:
+        filename = args[0]
     else:
-        f = dataf
-        send = c.send
-        # the file contains the RPC only; send extra stuff
-        send('''<?xml version="1.0" encoding="UTF-8"?>
-                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-                     message-id="1">''')
-    if (o.edit != ""):
-        # the file contains the edit-config payload only; send rpc
-        send("<edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>"
-             "<target><%s/></target><config>" % o.db)
-    elif (o.copy != ""):
-        # the file contains the copy-config payload only; send rpc
-        send("<copy-config><target><%s/></target><source><config>" % o.db)
-    # read and send from the file
-    buf = f.read(bufsiz)
-    while (buf != ""):
-        send(buf)
-        buf = f.read(bufsiz)
-    # end the rpc
-    if (o.edit != ""):
-        send("</config></edit-config>")
-    elif (o.copy != ""):
-        send("</config></source></copy-config>")
-    if dataf is not None:
-        send('</rpc>')
-        c.send_eom()
-        # read one rpc-reply, and then close
-        n = 1
-    else:
-        c._flush()
-        # print results until EOF
-        n = -1
-else:
-    n = o.iter
-    if o.create_subscription is not None or o.interactive:
-        if o.style == 'default':
-            o.style = 'all'
-        # print results until EOF
-        n = -1
+        filename = None
 
-# style:
-#   raw:    print what we got on the wire, no extra processing,
-#           except that framing is removed
-#           FIXME: should we really remove framing in raw?
-#   plain:  skip the hello reply, print one reply as raw, skip the rest
-#   pretty: skip the hello reply, pretty-print one reply, skip the rest
-#   all:    skip the hello reply, pretty-print the rest of the replies
-#   noaaa:  as pretty, but remove tail-f aaa and ietf nacm from the output
-#           (this is a legacy hack)
-if o.style == 'default':
-    o.style = 'pretty'
-
-# possibly set up for pretty printing through xmllint
-if o.style == "noaaa":
-    noaaa = "|awk ' BEGIN { del=0} /<(aaa|nacm)/ {del=1} /<\/(aaa|nacm)>/ {del=0;next} del == 1 {next} {print}'"
-else:
-    noaaa = ""
-xmllint = "xmllint --format - " + noaaa
-
-if sys.hexversion >= 0x02060000:
-    import subprocess
-    use_subprocess = True
-else:
-    use_subprocess = False
-
-do_print = True
-is_closed = False
-chunk = ""
-
-if o.style == "raw":
-    do_print = False
-
-if o.hello and o.style=="raw":
-    # the hello reply has already been printed
-    n = 0
-
-while not is_closed and (n != 0 or o.interactive):
-    fd = None
-    if do_print and o.style in ("pretty", "all", "noaaa"):
-        if use_subprocess:
-            p = subprocess.Popen(xmllint, shell=True, stdin=subprocess.PIPE,
-                                 stderr=subprocess.PIPE)
-            fd = p.stdin
-            p.stderr.close()
+    cmdf = None
+    dataf = None
+    # Read the command file
+    if filename:
+        if filename == '-':
+            cmdf = sys.stdin
         else:
-            fd = os.popen(xmllint + " 2>/dev/null", 'w')
-            p = fd
-    else:
-        fd = sys.stdout
-        p = None
-
-    if o.interactive:
-        msg = read_msg()
-    # send the request, if not already sent from file above
-    if msg is not None:
-        c.send_msg(msg)
-
-    # receive the reply in chunks, so we can print them in raw format
-    # as we get them
-    nchunks = 0
-    while True:
-        if o.hello:
-            if hello_reply != "":
-                # if msg is None we need to print the hello_reply (unless
-                # already done; in that case hello_reply is "")
-                chunk = hello_reply
-                code = 0
-                # set n to 1 to abort while loop
-                n = 1
-        else:
-            (code, chunk) = c.recv_chunk()
-        if code < 0:
-            # EOF received (or framing error)
-            if do_print:
-                write_fd(fd, chunk)
-            if nchunks == 0:
-                is_closed = True
-                break
-            else:
-                if code == -1:
-                    sys.stderr.write("unexpected EOF in NETCONF transport\n")
-                elif code == -2:
-                    sys.stderr.write("NETCONF transport framing error\n")
-                sys.exit(1)
-        nchunks += 1
-
-        if do_print:
-            write_fd(fd, chunk)
-
-        if code == 0:
-            # we have received a full message  
-            break
-
-    if p is not None:
-        if nchunks > 0:
-            if use_subprocess:
-                fd.close()
-                p.wait()
-                retcode = p.returncode
-                print("me1 + " + str(retcode))
-            else:
-                if fd.close() is None:
-                    retcode = 0
-                    print("me2")
-                else:
-                    retcode = 1
-                    print("me3")
-            if retcode != 0:
-                print("me4")
-                sys.stderr.write("2 Problem with xmllint executable. Is it in PATH?\n")
-                sys.exit(1)
-
-        if (o.style != "all") and (o.style != "raw") and (o.style != "plain"):
-            # don't print the rest of the replies
-            do_print = False
-
-    if o.create_subscription is not None:
+            cmdf = open(filename, "r")
         msg = None
-    
-    n = n - 1
+    elif o.get:
+        msg = get_msg("get", None, o.xpath, o.wdefaults, o.winactive)
+    elif hasattr(o, "getConfig"):
+        cmd = "get-config"
+        if o.getConfig == "default":
+            db = o.db
+        else:
+            db = o.getConfig
+        msg = get_msg(cmd, db, o.xpath, o.wdefaults, o.winactive)
+    elif o.rpc != "":
+        dataf = open(o.rpc, "r")
+        msg = None
+    elif o.edit != "":
+        dataf = open(o.edit, "r")
+        msg = None
+    elif o.copy != "":
+        dataf = open(o.copy, "r")
+        msg = None
+    elif o.kill_session != "":
+        msg = kill_session_msg(o.kill_session)
+    elif o.discard_changes:
+        msg = discard_changes_msg()
+    elif o.commit:
+        msg = commit_msg()
+    elif o.validate:
+        msg = validate_msg(o.db)
+    elif o.copy_running_to_startup:
+        msg = copy_running_to_startup_msg()
+    elif o.get_schema is not None:
+        msg = get_schema_msg(o.get_schema)
+    elif o.create_subscription is not None:
+        msg = create_subscription_msg(o.create_subscription, o.xpath)
+    elif o.hello:
+        msg = None
+    elif o.interactive:
+        pass
+    else:
+        parser.error("a filename or a command option is required")
 
-if not is_closed:
-    # send close
-    c.send_msg(close_msg())
-    
-    # recv close reply
-    close_reply = c.recv_msg()
+    # create the transport object
+    if o.proto == "ssh":
+        try:
+            import paramiko
+        except:
+            print("You must install the python ssh implementation paramiko")
+            print("in order to use ssh.")
+            sys.exit(1)
 
-# Done
-c.close()
+        c = NetconfSSH(o.host, o.port, o.username, o.password, "", "", 
+                    o.privKeyFile, o.privKeyType)
+    else:
+        c = NetconfTCP(o.host, o.port, o.username, o.groups, o.supgroups)
+
+    if o.style == "raw":
+        c.trace = True
+
+    # connect to the NETCONF server
+    c.connect()
+
+    # figure out which versions to advertise
+    versions = []
+    if cmdf is not None and o.version is None:
+        # backwards compat - no version specified, and everything is
+        # done from file.  assume this is 1.0.
+        versions.append('1.0')
+    else:    
+        if o.version == '1.0' or o.version is None:
+            versions.append('1.0')
+        if o.version == '1.1' or o.version is None:
+            versions.append('1.1')
+
+    # send our hello unless we do everything from the file
+    if cmdf is None:
+        c.send_msg(hello_msg(versions))
+
+    # read the server's hello
+    hello_reply = c.recv_msg()
+
+    # parse the hello message to figure out which framing
+    # protocol to use
+    d = xml.dom.minidom.parseString(hello_reply)
+
+    if d is not None:
+        print(d.toprettyxml())
+    sys.exit(0)
+
+if __name__ == "__main__" :
+    # original_main()
+    my_main()

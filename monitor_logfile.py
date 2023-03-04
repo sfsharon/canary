@@ -1,3 +1,8 @@
+"""
+Monitor log file script.
+Meant to work inside the DUT, therefore code fits with python2
+"""
+
 import pyinotify
 import sys
 
