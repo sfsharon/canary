@@ -287,43 +287,7 @@ class NetconfSSH(NetconfSSHLikeTransport):
         self.ssh.close()
         return True
 		
-# class NetconfTCP(NetconfSSHLikeTransport):
-	
-#     def __init__(self, hostname, port, username, groups, suplgids):
-#         NetconfSSHLikeTransport.__init__(self)
-#         self.hostname = str(hostname)
-#         self.port = int(port)
-#         self.username = username
-#         self.groups = groups
-#         self.suplgids = suplgids
 
-#     def connect(self):
-#         self.sock = create_connection(self.hostname, self.port)
-#         sockname = self.sock.getsockname()
-#         self.sock.send("["+self.username+";%s;tcp;%d;%d;%s;%s;%s;]\n"%(sockname[0], os.getuid(), os.getgid(), self.suplgids, os.getenv("HOME", "/tmp"), self.groups)) 
-		
-#     def _send(self, buf):
-#         try:
-#             self.sock.send(buf)
-#         except socket.error as x:
-#             print('socket error:', str(x))
-	
-#     def _send_eom(self):
-#         self._send(self._get_eom())
-
-#     def _recv(self, bufsiz):
-#         s = self.sock.recv(bufsiz)
-#         if self.trace:
-#             sys.stdout.write(s)
-#             sys.stdout.flush()
-#         return s
-
-#     def _set_timeout(self, timeout=None):
-#         self.sock.settimeout(timeout)
-
-#     def close(self):
-#         self.sock.close()
-#         return True
 
 # sort-of socket.create_connection() (new in 2.6)
 def create_connection(host, port):
@@ -551,6 +515,7 @@ def my_main() :
 
     versions = ['1.0']
 
+    print ("GET CAPABILITIES\n------------------------------")
     c.send_msg(hello_msg(versions))
 
     # read the server's hello
@@ -563,8 +528,18 @@ def my_main() :
     if d is not None:
         print(d.toprettyxml())
 
-    sys.exit(0)
-
+    print ("GET WITH FILTER: \\ROUTING\n------------------------------")
+    cmd = "get-config"
+    db = "running"
+    xpath = "/routing"
+    wdefaults = ""
+    winactive = False
+    msg = get_msg(cmd, db, xpath, wdefaults, winactive)
+    c.send_msg(msg)
+    dut_reply = c.recv_msg()
+    d = xml.dom.minidom.parseString(dut_reply)
+    if d is not None:
+        print(d.toprettyxml())
 
 def original_main() :
     # main
