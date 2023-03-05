@@ -497,6 +497,44 @@ def strip(node):
         else:
             c = c.nextSibling
 
+def get_config_by_xpath(connection, xpath) :
+    """
+    Input : xpath input with type string.
+            connection object
+    Return value : XML Configuration 
+    """
+    cmd = "get-config"
+    db = "running"
+    wdefaults = ""
+    winactive = False
+    msg = get_msg(cmd, db, xpath, wdefaults, winactive)
+    connection.send_msg(msg)
+    dut_reply = connection.recv_msg()
+    return dut_reply
+
+def get_policy_acl_in (xml_resp, interface_name) :
+    """
+    Parse XML received from DUT for the ACL ingress policy name attached to interface_name.
+    Input : xml_rest - XML string for query the "x-eth" tag name
+            interface_name - String for searching the acl ingress policy .
+                             Values can be "x-eth", "ctrl-plane", "agg-eth", etc. 
+    Return value : Policy acl in if exists, empty string otherwise
+    """
+    x_eth_dom = xml.dom.minidom.parseString(xml_resp)
+
+    policy_acl_in = ''
+
+    x_eth_list = x_eth_dom.getElementsByTagName(interface_name)
+    for x_eth in x_eth_list :
+        acl_node_list = x_eth.getElementsByTagName("acl")
+        for acl_node in acl_node_list :
+            dir_node = acl_node.getElementsByTagName("in")
+            if len(dir_node) == 1 :
+                policy_acl_in = ((dir_node[0].childNodes)[0].data)
+                break    
+
+    return policy_acl_in
+
 def my_main() :
     """
     My Main
@@ -513,33 +551,17 @@ def my_main() :
     # connect to the NETCONF server
     c.connect()
 
+    # First get the hello message
     versions = ['1.0']
-
-    print ("GET CAPABILITIES\n------------------------------")
     c.send_msg(hello_msg(versions))
-
-    # read the server's hello
     hello_reply = c.recv_msg()
 
-    # parse the hello message to figure out which framing
-    # protocol to use
-    d = xml.dom.minidom.parseString(hello_reply)
-
-    if d is not None:
-        print(d.toprettyxml())
-
-    print ("GET WITH FILTER: \\ROUTING\n------------------------------")
-    cmd = "get-config"
-    db = "running"
-    xpath = "/routing"
-    wdefaults = ""
-    winactive = False
-    msg = get_msg(cmd, db, xpath, wdefaults, winactive)
-    c.send_msg(msg)
-    dut_reply = c.recv_msg()
-    d = xml.dom.minidom.parseString(dut_reply)
-    if d is not None:
-        print(d.toprettyxml())
+    print ("GET CONFIGURATION X-ETH 0/0/1: \n------------------------------")
+    conf_xml_subtree = get_config_by_xpath(c, "/interface/x-eth")
+    if conf_xml_subtree is not None:
+        # print(conf_xml_subtree.toprettyxml())
+        acl_in_policy = get_policy_acl_in(conf_xml_subtree, "x-eth")
+        print ("Policy in : " + acl_in_policy)
 
 def original_main() :
     # main
