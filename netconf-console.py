@@ -525,12 +525,12 @@ def my_main() :
     # connect to the NETCONF server
     dut_conn.connect()
 
-    # First get the hello message
+    # Need to perform get hello from DUT first.
     versions = ['1.0']
     dut_conn.send_msg(hello_msg(versions))
     hello_reply = dut_conn.recv_msg()
 
-    print ("GET FIRST ACL IN CONFIGURATION FROM X-ETH : \n------------------------------")
+    print ("GET FIRST ACL IN CONFIGURATION FROM X-ETH : \n----------------------------------------")
     conf_xml_subtree = get_config_by_xpath(dut_conn, "/interface/x-eth")
     
     if conf_xml_subtree is not None:

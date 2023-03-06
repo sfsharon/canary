@@ -35,56 +35,52 @@ xml_resp = """<?xml version="1.0" ?>
 
 import xml.dom.minidom
 
-# x_eth_dom = xml.dom.minidom.parseString(resp)
-
-# policy_acl_in = ''
-
-# x_eth_list = x_eth_dom.getElementsByTagName("x-eth")
-# for x_eth in x_eth_list :
-#     acl_node_list = x_eth.getElementsByTagName("acl")
-#     for acl_node in acl_node_list :
-#         dir_node = acl_node.getElementsByTagName("in")
-#         if len(dir_node) == 1 :
-#             policy_acl_in = ((dir_node[0].childNodes)[0].data)
-#             break
-
-
-def get_object_instance (xml_tree, filter_name, instance_name) :
+class ErrorConf(Exception):
     """
-    Find instance_name by parsing XML received xml_tree from DUT, according to the xml_path.
-    Input : xml_tree - XML string for query the "x-eth" tag name
-    		filter_name - tag name to filter accordingly.
-            instance_name - String 
-    Return value : xml node of requred instance_name under the given xml_path
+    My exception
     """
-    class ErrorXmlPath(Exception):
-         pass
+    pass
+
+# *************************************
+# INTERNAL MODULE FUNCTIONS
+# *************************************
+
+def _get_node_text (node):
+    """
+    Parse xml minidom element for text value
+    Input : node - xml minidom element
+    Output : String
+    """
+    rv = None       
+    child_node = node.childNodes
+
+    # Sanity checking
+    if len(child_node) != 1 :
+        raise ErrorConf("Error in number of child node. found " + str(len(child_node)) + " instances")
+    elif child_node[0].nodeType != child_node[0].TEXT_NODE :
+        raise ErrorConf("Error in child node.type. Expecting text type, got " + str(child_node[0].nodeType) + " type")
     
-    dom = xml.dom.minidom.parseString(xml_tree)
+    rv = child_node[0].data 
 
-    ret_node = None
+    return rv
+ 
+def _get_unique_node (xml_tree_dom, tag_name) :
+    """
+    Get a node that appears only once in the xml_tree_dom
+    Input : xml_tree_dom
+            tag_name
+    output : xml minidom element if exits single tag_name node, None otherwise
+    """
+    rv = None
 
-    instance_list = dom.getElementsByTagName(filter_name)
-    for dom_elem in instance_list :
-        instance_node = dom_elem.getElementsByTagName("instance")
-        if len(instance_node) != 1 :
-            raise ErrorXmlPath("Error in number of xml tag " + instance_name + ", found " + str(len(instance)) + " instances")
-        
-        child_node = instance_node[0].childNodes
+    instance_nodes = xml_tree_dom.getElementsByTagName(tag_name)
+    if len(instance_nodes) != 1 :
+        raise ErrorConf("Error - Searched for unique xml tag " + tag_name + ", found instead " + str(len(instance_nodes)) + " instances")
+    rv = instance_nodes[0]
 
-        if len(child_node) != 1 :
-            raise ErrorXmlPath("Error in number of child node. found " + str(len(child_node)) + " instances")
-        
-        if child_node[0].nodeType != child_node[0].TEXT_NODE :
-            raise ErrorXmlPath("Error in child node.type. Expecting text type, got " + str(child_node[0].nodeType) + " type")
-        
-        if child_node[0].data == instance_name :
-            ret_node = dom_elem
-            break
+    return rv
 
-    return ret_node
-
-def get_object_attribute (instance_node, xml_path_list) :
+def _get_object_attribute (instance_node, xml_path_list) :
     """
     Get an attribute of an object.
     Input : instance_node - xml.minidom.elem object of the required object, found by function get_object_instance().
@@ -94,32 +90,51 @@ def get_object_attribute (instance_node, xml_path_list) :
     """
 
     attr = None
+    currNode = None
 
-
-
-    # curr_node = None
-
-    # for i, curr_path in enumerate(xml_path[:-1]) :
-    #     curr_node = dom.getElementsByTagName(curr_path)
-
-    #     if len(curr_node) != 1 :
-    #         raise ErrorXmlPath("Error in number of xml tags " + curr_path + ", found " + len(curr_node))
-    
+    if len(xml_path_list) == 1 :
         
-    # x_eth_list = x_eth_dom.getElementsByTagName(interface_name)
-    # for x_eth in x_eth_list :
-    #     acl_node_list = x_eth.getElementsByTagName("acl")
-    #     for acl_node in acl_node_list :
-    #         dir_node = acl_node.getElementsByTagName("in")
-    #         if len(dir_node) == 1 :
-    #             policy_acl_in = ((dir_node[0].childNodes)[0].data)
-    #             break    
 
-    # return policy_acl_in
+    for path in xml_path_list :
+        instance_nodes = dom_elem.getElementsByTagName("instance")
+                if len(instance_nodes) != 1 :
+                    raise ErrorConf("Error in number of xml tag " + instance_name + ", found " + str(len(instance)) + " instances")
+                instance_node = instance_nodes[0]
 
-# val = get_object_instance(xml_resp, ["data", "interface", "x-eth"], "0/0/1")
-instance_node = get_object_instance(xml_resp, "x-eth", "0/0/1")
-acl_in_policy_name = get_object_attribute (instance_node, ["policy", "acl", "in"])
-print(acl_in_policy_name)
 
-print("finish")
+# *************************************
+# EXTERNAL MODULE FUNCTIONS
+# *************************************
+
+def get_object_instance (xml_tree, filter_name, instance_name) :
+    """
+    Find instance_name by parsing XML received xml_tree from DUT, according to the xml_path.
+    Input : xml_tree - XML string for query the "x-eth" tag name
+    		filter_name - tag name to filter accordingly.
+            instance_name - String 
+    Return value : xml node of requred instance_name under the given xml_path
+    """
+    
+    dom = xml.dom.minidom.parseString(xml_tree)
+
+    ret_node = None
+
+    instance_list = dom.getElementsByTagName(filter_name)
+    for dom_elem in instance_list :
+        instance_node = _get_unique_node(dom_elem, "instance")
+        node_text = _get_node_text(instance_node)
+        
+        if node_text == instance_name :
+            ret_node = dom_elem
+            break
+
+    return ret_node
+
+
+
+if __name__ == "__main__" :
+    instance_node = get_object_instance(xml_resp, "x-eth", "0/0/1")
+    acl_in_policy_name = _get_object_attribute (instance_node, ["policy", "acl", "in"])
+    print(acl_in_policy_name)
+
+    print("finish")
