@@ -1,17 +1,7 @@
-#!/usr/bin/python3
-#
-# Trivial Netconf Console
-#
-
 import sys
 import os
-# import re
 
 import paramiko
-
-# if sys.hexversion < 0x02030000:
-#     print("This script needs python version >= 2.3")
-#     sys.exit(1)
 
 from optparse import OptionParser
 import base64
@@ -94,8 +84,6 @@ class MyNetconf(object):
 
     def _send(self, buf):
         try:
-#            self.chan.sendall(buf)
-#            return
             if self.saved:
                 buf = self.saved + buf
             # sending too little data in each SSH packet makes the
@@ -265,8 +253,13 @@ class MyNetconf(object):
 # ***************************************************************************************
 # Netconf Helper functions
 # ***************************************************************************************
-# sort-of socket.create_connection() (new in 2.6)
+
 def create_connection(host, port):
+    """
+    sort-of socket.create_connection() (new in 2.6)
+    """
+    sock = None
+
     for res in socket.getaddrinfo(host, port,
                                   socket.AF_UNSPEC, socket.SOCK_STREAM):
         af, socktype, proto, canonname, sa = res
@@ -491,28 +484,6 @@ def get_config_by_xpath(connection, xpath) :
     dut_reply = connection.recv_msg()
     return dut_reply
 
-def get_policy_acl_in (xml_resp, interface_name) :
-    """
-    Parse XML received from DUT for the ACL ingress policy name attached to interface_name.
-    Input : xml_rest - XML string for query the "x-eth" tag name
-            interface_name - String for searching the acl ingress policy .
-                             Values can be "x-eth", "ctrl-plane", "agg-eth", etc. 
-    Return value : Policy acl in if exists, empty string otherwise
-    """
-    x_eth_dom = xml.dom.minidom.parseString(xml_resp)
-
-    policy_acl_in = ''
-
-    x_eth_list = x_eth_dom.getElementsByTagName(interface_name)
-    for x_eth in x_eth_list :
-        acl_node_list = x_eth.getElementsByTagName("acl")
-        for acl_node in acl_node_list :
-            dir_node = acl_node.getElementsByTagName("in")
-            if len(dir_node) == 1 :
-                policy_acl_in = ((dir_node[0].childNodes)[0].data)
-                break    
-
-    return policy_acl_in
 
 def my_main() :
     """
@@ -533,10 +504,13 @@ def my_main() :
     print ("GET FIRST ACL IN CONFIGURATION FROM X-ETH : \n----------------------------------------")
     conf_xml_subtree = get_config_by_xpath(dut_conn, "/interface/x-eth")
     
-    if conf_xml_subtree is not None:
-        # print(conf_xml_subtree.toprettyxml())
-        acl_in_policy = get_policy_acl_in(conf_xml_subtree, "x-eth")
-        print ("Policy in : " + acl_in_policy)
+    # Get policy acl in name for interface x-eth 0/0/1
+    if conf_xml_subtree is not None:        
+        import parse_xml
+        instance_node = parse_xml.get_instance(conf_xml_subtree, "x-eth", "0/0/1")
+        acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
+
+        print ("Policy in : " + acl_in_policy_name)
 
 def original_main() :
     # main
