@@ -31,36 +31,112 @@ FRAMING_1_0 = 0
 # the new framing in 4742bis
 FRAMING_1_1 = 1
 
-class NetconfSSHLikeTransport(object):
-    def __init__(self):
+
+class MyNetconf(object):
+
+    def __init__(self, hostname, port, username, password,
+                 publicKey, publicKeyType,
+                 privateKeyFile='', privateKeyType=''):
         self.buf = b""
         self.framing = FRAMING_1_0
         self.eom_found = False
         self.trace = False
-        
+        self.hostname = str(hostname)
+        self.port = int(port)
+        self.privateKeyFile = privateKeyFile
+        self.privateKeyType =  privateKeyType
+        self.publicKey  = publicKey
+        self.publicKeyType =  publicKeyType
+        self.password  = password
+        self.username = username
+        self.saved = ""
+
     def connect(self):
-        # should be overridden by subclass
-        pass
+        sock = create_connection(self.hostname, self.port)
+        
+        self.ssh = paramiko.Transport(sock)
+                
+        if self.publicKeyType == 'rsa':
+            agent_public_key = paramiko.RSAKey(
+                data=base64.decodestring(self.publicKey))
+        elif self.publicKeyType == 'dss':
+            agent_public_key = paramiko.DSSKey(
+                data=base64.decodestring(self.publicKey))
+        else:
+            agent_public_key = None
+                    
+        if not self.privateKeyFile == '':
+            if self.privateKeyType == "rsa":
+                user_private_key = paramiko.RSAKey.from_private_key_file(self.privateKeyFile)
+            #elif self.privateKeyType == "dss":
+            else:
+                user_private_key = paramiko.DSSKey.from_private_key_file(self.privateKeyFile)
+
+            try:
+                self.ssh.connect(hostkey=agent_public_key,
+                                 username=self.username,
+                                 pkey=user_private_key)
+            except paramiko.AuthenticationException:
+                print("Authentication failed.")
+                sys.exit(1)
+
+        else:
+            try:
+                self.ssh.connect(hostkey=agent_public_key,
+                                 username=self.username,
+                                 password=self.password)
+            except paramiko.AuthenticationException:
+                print("Authentication failed.")
+                sys.exit(1)
+
+        self.chan = self.ssh.open_session()
+        self.chan.invoke_subsystem("netconf")
 
     def _send(self, buf):
-        # should be overridden by subclass
-        pass
+        try:
+#            self.chan.sendall(buf)
+#            return
+            if self.saved:
+                buf = self.saved + buf
+            # sending too little data in each SSH packet makes the
+            # transfer slow.
+            # paramiko still has  bug (?) where it doensn't send a full
+            # SSH message, but keeps 64 bytes.  so we will send MAX-64, 64,
+            # MAX-64, 64, ... instead of MAX all the time.
+            if len(buf) < bufsiz:
+                self.saved = buf
+            else:
+                self.chan.sendall(buf[:bufsiz])
+                self.saved = buf[bufsiz:]
+        except socket.error as x:
+            print('socket error:', str(x))
 
     def _send_eom(self):
-        # should be overridden by subclass
-        pass
+        try:
+            self.chan.sendall(self.saved + self._get_eom())
+            self.saved = ""
+        except socket.error as x:
+            self.saved = ""
+            print('socket error:', str(x))
 
     def _flush(self):
-        # should be overridden by subclass, if needed
-        pass
+        try:
+            self.chan.sendall(self.saved)
+            self.saved = ""
+        except socket.error as x:
+            self.saved = ""
+            print('socket error:', str(x))
+
 
     def _set_timeout(self, timeout=None):
-        # should be overridden by subclass
-        pass
+        self.chan.settimeout(timeout)
     
     def _recv(self, bufsiz):
-        # should be overridden by subclass
-        pass
+        s = self.chan.recv(bufsiz)
+        if self.trace:
+            sys.stdout.write(s)
+            sys.stdout.flush()
+        return s
 
     def send(self, request):
         if self.framing == FRAMING_1_1:
@@ -83,11 +159,13 @@ class NetconfSSHLikeTransport(object):
         else:
             return ''
 
-    # ret: (-2, bytes) on framing error
-    #      (-1, bytes) on socket EOF
-    #      (0, "") on EOM
-    #      (1, chunk-data) on data
     def recv_chunk(self, timeout=None):
+        """
+        ret: (-2, bytes) on framing error
+             (-1, bytes) on socket EOF
+             (0, "") on EOM
+             (1, chunk-data) on data
+        """
         self._set_timeout(timeout)
         if self.framing == FRAMING_1_0:
             if self.eom_found:
@@ -179,116 +257,14 @@ class NetconfSSHLikeTransport(object):
             else:
                 # error
                 return msg + bytes
-
-
-class NetconfSSH(NetconfSSHLikeTransport):
-
-    def __init__(self, hostname, port, username, password,
-                 publicKey, publicKeyType,
-                 privateKeyFile='', privateKeyType=''):
-        NetconfSSHLikeTransport.__init__(self)
-        self.hostname = str(hostname)
-        self.port = int(port)
-        self.privateKeyFile = privateKeyFile
-        self.privateKeyType =  privateKeyType
-        self.publicKey  = publicKey
-        self.publicKeyType =  publicKeyType
-        self.password  = password
-        self.username = username
-        self.saved = ""
-
-    def connect(self):
-        sock = create_connection(self.hostname, self.port)
-		
-        self.ssh = paramiko.Transport(sock)
-                
-        if self.publicKeyType == 'rsa':
-            agent_public_key = paramiko.RSAKey(
-                data=base64.decodestring(self.publicKey))
-        elif self.publicKeyType == 'dss':
-            agent_public_key = paramiko.DSSKey(
-                data=base64.decodestring(self.publicKey))
-        else:
-            agent_public_key = None
-                    
-        if not self.privateKeyFile == '':
-            if self.privateKeyType == "rsa":
-                user_private_key = paramiko.RSAKey.from_private_key_file(self.privateKeyFile)
-            #elif self.privateKeyType == "dss":
-            else:
-                user_private_key = paramiko.DSSKey.from_private_key_file(self.privateKeyFile)
-
-            try:
-                self.ssh.connect(hostkey=agent_public_key,
-                                 username=self.username,
-                                 pkey=user_private_key)
-            except paramiko.AuthenticationException:
-                print("Authentication failed.")
-                sys.exit(1)
-
-        else:
-            try:
-                self.ssh.connect(hostkey=agent_public_key,
-                                 username=self.username,
-                                 password=self.password)
-            except paramiko.AuthenticationException:
-                print("Authentication failed.")
-                sys.exit(1)
-
-        self.chan = self.ssh.open_session()
-        self.chan.invoke_subsystem("netconf")
-
-    def _send(self, buf):
-        try:
-#            self.chan.sendall(buf)
-#            return
-            if self.saved:
-                buf = self.saved + buf
-            # sending too little data in each SSH packet makes the
-            # transfer slow.
-            # paramiko still has  bug (?) where it doensn't send a full
-            # SSH message, but keeps 64 bytes.  so we will send MAX-64, 64,
-            # MAX-64, 64, ... instead of MAX all the time.
-            if len(buf) < bufsiz:
-                self.saved = buf
-            else:
-                self.chan.sendall(buf[:bufsiz])
-                self.saved = buf[bufsiz:]
-        except socket.error as x:
-            print('socket error:', str(x))
-
-    def _send_eom(self):
-        try:
-            self.chan.sendall(self.saved + self._get_eom())
-            self.saved = ""
-        except socket.error as x:
-            self.saved = ""
-            print('socket error:', str(x))
-
-    def _flush(self):
-        try:
-            self.chan.sendall(self.saved)
-            self.saved = ""
-        except socket.error as x:
-            self.saved = ""
-            print('socket error:', str(x))
-
-    def _recv(self, bufsiz):
-        s = self.chan.recv(bufsiz)
-        if self.trace:
-            sys.stdout.write(s)
-            sys.stdout.flush()
-        return s
-
-    def _set_timeout(self, timeout=None):
-        self.chan.settimeout(timeout)
-        
+    
     def close(self):
         self.ssh.close()
         return True
-		
 
-
+# ***************************************************************************************
+# Netconf Helper functions
+# ***************************************************************************************
 # sort-of socket.create_connection() (new in 2.6)
 def create_connection(host, port):
     for res in socket.getaddrinfo(host, port,
@@ -324,9 +300,9 @@ def write_fd(fd,data):
 
 def hello_msg(versions):
     s = '''<?xml version="1.0" encoding="UTF-8"?>
-<hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-  <capabilities>
-'''
+           <hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+           <capabilities>
+        '''
     if '1.0' in versions:
         s += '    <capability>%s</capability>\n' % base_1_0
     if '1.1' in versions:
@@ -338,9 +314,9 @@ def hello_msg(versions):
 
 def close_msg():
     return '''<?xml version="1.0" encoding="UTF-8"?>
-    <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="0">
-        <close-session/>
-    </rpc>'''
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="0">
+                <close-session/>
+                </rpc>'''
 
 def get_msg(cmd, db, xpath, with_defaults, with_inactive):
     if xpath == "":
@@ -374,9 +350,9 @@ def get_msg(cmd, db, xpath, with_defaults, with_inactive):
         dattr = ""
 
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"%s message-id="1">
-    %s
-</rpc>''' % (dattr, op)
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"%s message-id="1">  
+                    %s
+                </rpc>''' % (dattr, op)
 
 def get_config_opt(option, opt, value, parser):
     if len(parser.rargs) == 0:
@@ -405,48 +381,48 @@ def opt_xpath(option, opt_str, value, parser):
 
 def kill_session_msg(id):
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <kill-session><session-id>%s</session-id></kill-session>
-</rpc>''' % id
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <kill-session><session-id>%s</session-id></kill-session>
+                </rpc>''' % id
     
 def discard_changes_msg():
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <discard-changes/>
-</rpc>'''
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <discard-changes/>
+                </rpc>'''
 
 def commit_msg():
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <commit/>
-</rpc>'''
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <commit/>
+                </rpc>'''
 
 def validate_msg(db):
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <validate><source><%s/></source></validate>
-</rpc>''' % db
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <validate><source><%s/></source></validate>
+                </rpc>''' % db
 
 def copy_running_to_startup_msg():
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <copy-config>
-      <target>
-        <startup/>
-      </target>
-      <source>
-        <running/>
-      </source>
-    </copy-config>
-</rpc>'''
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <copy-config>
+                    <target>
+                        <startup/>
+                    </target>
+                    <source>
+                        <running/>
+                    </source>
+                    </copy-config>
+                </rpc>'''
 
 def get_schema_msg(identifier):
     return '''<?xml version="1.0" encoding="UTF-8"?>
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <get-schema xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-monitoring">
-      <identifier>%s</identifier>
-    </get-schema>
-</rpc>''' % identifier
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <get-schema xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-monitoring">
+                    <identifier>%s</identifier>
+                    </get-schema>
+                </rpc>''' % identifier
     
 def create_subscription_msg(stream, xpath):
     if xpath == "":
@@ -497,6 +473,9 @@ def strip(node):
         else:
             c = c.nextSibling
 
+# ***************************************************************************************
+# qos-v Helper functions
+# ***************************************************************************************
 def get_config_by_xpath(connection, xpath) :
     """
     Input : xpath input with type string.
@@ -539,25 +518,21 @@ def my_main() :
     """
     My Main
     """
-    host ="10.3.10.1"
-    port = 2022
-    username = "admin"
-    password = "admin"
-    privKeyFile = ""
-    privKeyType = ""
-    c = NetconfSSH(host, port, username, password, "", "", 
-                   privKeyFile, privKeyType)
+    dut_conn = MyNetconf(hostname = "10.3.10.1", port = 2022, username = "admin", password = "admin", 
+                  publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
+
 
     # connect to the NETCONF server
-    c.connect()
+    dut_conn.connect()
 
     # First get the hello message
     versions = ['1.0']
-    c.send_msg(hello_msg(versions))
-    hello_reply = c.recv_msg()
+    dut_conn.send_msg(hello_msg(versions))
+    hello_reply = dut_conn.recv_msg()
 
-    print ("GET CONFIGURATION X-ETH 0/0/1: \n------------------------------")
-    conf_xml_subtree = get_config_by_xpath(c, "/interface/x-eth")
+    print ("GET FIRST ACL IN CONFIGURATION FROM X-ETH : \n------------------------------")
+    conf_xml_subtree = get_config_by_xpath(dut_conn, "/interface/x-eth")
+    
     if conf_xml_subtree is not None:
         # print(conf_xml_subtree.toprettyxml())
         acl_in_policy = get_policy_acl_in(conf_xml_subtree, "x-eth")
