@@ -4,32 +4,32 @@ Parse XML from DUT
 
 xml_resp = """<?xml version="1.0" ?>
 <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-	<data>
-		<interface xmlns="http://compass-eos.com/ns/compass_yang">
-			<x-eth>
-				<instance>0/0/0</instance>
-				<speed>1000</speed>
-				<admin-state>up</admin-state>
-				<ipv4-address>10.1.0.1/24</ipv4-address>
-				<mpls>enable</mpls>
-			</x-eth>
+    <data>
+        <interface xmlns="http://compass-eos.com/ns/compass_yang">
+            <x-eth>
+                <instance>0/0/0</instance>
+                <speed>1000</speed>
+                <admin-state>up</admin-state>
+                <ipv4-address>10.1.0.1/24</ipv4-address>
+                <mpls>enable</mpls>
+            </x-eth>
 
-			<x-eth>
-				<instance>0/0/1</instance>
-				<speed>1000</speed>
-				<policy>
-					<acl>
-						<in>pol_ipv4</in>
-					</acl>
-				</policy>
-			</x-eth>
+            <x-eth>
+                <instance>0/0/1</instance>
+                <speed>1000</speed>
+                <policy>
+                    <acl>
+                        <in>pol_ipv4</in>
+                    </acl>
+                </policy>
+            </x-eth>
 
-			<x-eth>
-				<instance>0/0/2</instance>
-				<speed>10000</speed>
-			</x-eth>
-		</interface>
-	</data>
+            <x-eth>
+                <instance>0/0/2</instance>
+                <speed>10000</speed>
+            </x-eth>
+        </interface>
+    </data>
 </rpc-reply>
 """
 
@@ -48,17 +48,17 @@ class ErrorConf(Exception):
 def _get_node_text (node):
     """
     Parse xml minidom element for text value
-    Input : node - xml minidom element
-    Output : String
+    Input  : node - xml minidom element
+    Output : String - Node's text 
     """
     rv = None       
     child_node = node.childNodes
 
-    # Sanity checking
-    if len(child_node) != 1 :
+    # Assumptions verify
+    if   len(child_node) != 1 :
         raise ErrorConf("Error in number of child node. found " + str(len(child_node)) + " instances")
     elif child_node[0].nodeType != child_node[0].TEXT_NODE :
-        raise ErrorConf("Error in child node.type. Expecting text type, got " + str(child_node[0].nodeType) + " type")
+        raise ErrorConf("Error in child node.type. Expecting text type, got instead " + str(child_node[0].nodeType) + " type")
     
     rv = child_node[0].data 
 
@@ -66,10 +66,10 @@ def _get_node_text (node):
  
 def _get_unique_node (xml_tree_dom, tag_name) :
     """
-    Get a node that appears only once in the xml_tree_dom
-    Input : xml_tree_dom
-            tag_name
-    output : xml minidom element if exits single tag_name node, None otherwise
+    Get a node that appears only once in the xml_tree_dom object
+    Input  : xml_tree_dom
+             tag_name - Tag name to search inside the xml_tree_dom xml.minidom object
+    Output : xml minidom element if exits single tag_name node, None otherwise
     """
     rv = None
 
@@ -80,37 +80,17 @@ def _get_unique_node (xml_tree_dom, tag_name) :
 
     return rv
 
-def _get_object_attribute (instance_node, xml_path_list) :
-    """
-    Get an attribute of an object.
-    Input : instance_node - xml.minidom.elem object of the required object, found by function get_object_instance().
-            xml_path_list - String list of the xml tag names for finding the required attribute.
-                            For example : ["policy", "acl", "in"]
-    Return value : String with the required attrbiute, None othewise.
-    """
-
-    attr = None
-    currNode = None
-
-    if len(xml_path_list) == 1 :
-        
-
-    for path in xml_path_list :
-        instance_nodes = dom_elem.getElementsByTagName("instance")
-                if len(instance_nodes) != 1 :
-                    raise ErrorConf("Error in number of xml tag " + instance_name + ", found " + str(len(instance)) + " instances")
-                instance_node = instance_nodes[0]
 
 
 # *************************************
 # EXTERNAL MODULE FUNCTIONS
 # *************************************
 
-def get_object_instance (xml_tree, filter_name, instance_name) :
+def get_instance (xml_tree, filter_name, instance_name) :
     """
     Find instance_name by parsing XML received xml_tree from DUT, according to the xml_path.
     Input : xml_tree - XML string for query the "x-eth" tag name
-    		filter_name - tag name to filter accordingly.
+            filter_name - tag name to filter accordingly.
             instance_name - String 
     Return value : xml node of requred instance_name under the given xml_path
     """
@@ -130,11 +110,42 @@ def get_object_instance (xml_tree, filter_name, instance_name) :
 
     return ret_node
 
+def get_instance_text_attribute (instance_node, xml_path_list) :
+    """
+    Get an attribute of an object.
+    Input : instance_node - xml.minidom.elem object of the required object, found by function _get_unique_node().
+            xml_path_list - String list of xml tag names for reaching the required attribute.
+                            For example : xml_path_list = ["policy", "acl", "in"] parameter for the following xml tree will 
+                                          return the string value "pol_ipv4" :
+                                <x-eth>
+                                    <instance>0/0/1</instance>
+                                    <speed>1000</speed>
+                                    <policy>
+                                        <acl>
+                                            <in>pol_ipv4</in>
+                                        </acl>
+                                    </policy>
+                                </x-eth>
+    Return value : String with the required attrbiute, None othewise.
+    """
+
+    attr = None
+    curr_node = _get_unique_node(instance_node, xml_path_list[0])
+
+    # Edge case - Only one tag name in xml_path_list
+    if len(xml_path_list) == 1 :
+        attr = _get_node_text(curr_node)
+        return attr
+
+    for tag_name in xml_path_list[1:] :
+        curr_node = _get_unique_node(curr_node, tag_name)
+
+    attr = _get_node_text(curr_node)
+    return attr
 
 
 if __name__ == "__main__" :
-    instance_node = get_object_instance(xml_resp, "x-eth", "0/0/1")
-    acl_in_policy_name = _get_object_attribute (instance_node, ["policy", "acl", "in"])
-    print(acl_in_policy_name)
-
+    instance_node = get_instance(xml_resp, "x-eth", "0/0/1")
+    acl_in_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
+    print (acl_in_policy_name)
     print("finish")
