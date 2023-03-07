@@ -3,11 +3,9 @@ import os
 
 import paramiko
 
-from optparse import OptionParser
 import base64
 import socket
 from xml.dom import Node
-import xml.dom.minidom
 
 import logging
 logging.basicConfig(
@@ -494,51 +492,12 @@ def get_config_by_xpath(connection, xml_path_list) :
     dut_reply = connection.recv_msg()
     return dut_reply
 
+def configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
+    import parse_xml
 
-def my_main() :
-    """
-    My Main
-    """
-    X_ETH_TAG_NAME     = "x-eth"
     RPC_REPLY_TAG_NAME = "rpc-reply"
     OK_TAG_NAME        = "ok"
-    ACL_IN_PATH_LIST   = ["policy", "acl", "in"]
-    X_ETH_XML_PATH     = ["interface", "x-eth"]
 
-    dut_conn = MyNetconf(hostname = "10.3.10.1", port = 2022, username = "admin", password = "admin", 
-                         publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
-
-    acl_in_policy_name = None
-
-    logging.info("Connecting to DUT")
-    dut_conn.connect()
-
-    # Perform get hello from DUT first
-    # ===============================================================    
-    logging.info("Sending Hello message")
-    versions = ['1.0']
-    dut_conn.send_msg(hello_msg(versions))
-    hello_reply = dut_conn.recv_msg()
-
-    # Get acl in policy of c-eth 0/0/2
-    # ===============================================================
-    x_eth_interface = "0/0/1"
-    logging.info("Get policy acl in name for interface x-eth " + x_eth_interface)
-    
-    conf_xml_subtree = get_config_by_xpath(dut_conn, X_ETH_XML_PATH)
-    if conf_xml_subtree is not None:        
-        import parse_xml
-        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, X_ETH_TAG_NAME, x_eth_interface)
-        acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ACL_IN_PATH_LIST)
-        if acl_in_policy_name != None :
-            logging.info("Policy acl in : " + acl_in_policy_name)
-        else :
-            logging.info("No Policy acl in")
-    
-
-    # Testing - Configre acl in policy on 0/0/3
-    # ===============================================================
-    x_eth_interface = "0/0/3"
     logging.info("Set policy acl in name for interface x-eth " + x_eth_interface)
 
     xml_command = f"""
@@ -578,7 +537,100 @@ def my_main() :
     if return_val != None :
         logging.info ("Successfull.")
     else :
-        logging.info ("Failed !")
+        logging.info ("Failed !")    
+
+def delete_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
+    import parse_xml
+
+    RPC_REPLY_TAG_NAME = "rpc-reply"
+    OK_TAG_NAME        = "ok"
+
+    logging.info("Deleting policy acl in name for interface x-eth " + x_eth_interface)
+
+    xml_command = f"""
+    <interface xmlns="http://compass-eos.com/ns/compass_yang">
+        <x-eth>
+            <instance>{x_eth_interface}</instance>
+            <policy>
+                    <acl>
+                    <in operation="delete">{acl_in_policy_name}</in>
+                </acl>
+            </policy>
+        </x-eth>
+    </interface>
+    """
+
+    db = "candidate"
+    xml_req = f"""<?xml version="1.0" encoding="UTF-8"?>
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>
+                        <target><{db}/></target>
+                        <config>
+                            {xml_command}
+                        </config>
+                    </edit-config>
+                </rpc>
+                """
+    
+    dut_conn.send_msg(xml_req)
+    xml_resp = dut_conn.recv_msg()
+    print(xml_resp)
+
+    logging.info("Sending commit")
+    xml_req = commit_msg()
+    dut_conn.send_msg(xml_req)
+    xml_resp = dut_conn.recv_msg()
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull.")
+    else :
+        logging.info ("Failed !")    
+
+
+def my_main() :
+    """
+    My Main
+    """
+    import parse_xml
+    
+    X_ETH_TAG_NAME     = "x-eth"
+    ACL_IN_PATH_LIST   = ["policy", "acl", "in"]
+    X_ETH_XML_PATH     = ["interface", "x-eth"]
+
+    dut_conn = MyNetconf(hostname = "10.3.10.1", port = 2022, username = "admin", password = "admin", 
+                         publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
+
+    acl_in_policy_name = None
+
+    logging.info("Connecting to DUT")
+    dut_conn.connect()
+
+    # Perform get hello from DUT first
+    # ===============================================================    
+    logging.info("Sending Hello message")
+    versions = ['1.0']
+    dut_conn.send_msg(hello_msg(versions))
+    hello_reply = dut_conn.recv_msg()
+
+    # Get acl in policy of c-eth 0/0/2
+    # ===============================================================
+    x_eth_interface = "0/0/1"
+    logging.info("Get policy acl in name for interface x-eth " + x_eth_interface)
+    
+    conf_xml_subtree = get_config_by_xpath(dut_conn, X_ETH_XML_PATH)
+    if conf_xml_subtree is not None:        
+        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, X_ETH_TAG_NAME, x_eth_interface)
+        acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ACL_IN_PATH_LIST)
+        if acl_in_policy_name != None :
+            logging.info("Policy acl in : " + acl_in_policy_name)
+        else :
+            logging.info("No Policy acl in")
+    
+
+    # Testing - Configre acl in policy on 0/0/3
+    # ===============================================================
+    # configure_acl_in(dut_conn, "0/0/3", acl_in_policy_name)
+    delete_acl_in(dut_conn, "0/0/3", acl_in_policy_name)
 
 if __name__ == "__main__" :
     my_main()
