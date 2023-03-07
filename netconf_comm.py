@@ -9,6 +9,13 @@ import socket
 from xml.dom import Node
 import xml.dom.minidom
 
+import logging
+logging.basicConfig(
+                    format='%(asctime)s.%(msecs)03d [%(funcName)s line %(lineno)d] %(levelname)-8s %(message)s',                       
+                    level=logging.INFO,
+                    datefmt='%H:%M:%S')
+
+
 bufsiz = 16384
 
 nc_ns = 'urn:ietf:params:xml:ns:netconf:base:1.0'
@@ -490,27 +497,29 @@ def my_main() :
     My Main
     """
     dut_conn = MyNetconf(hostname = "10.3.10.1", port = 2022, username = "admin", password = "admin", 
-                  publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
+                         publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
 
 
+    logging.info("Connecting to DUT")
     # connect to the NETCONF server
     dut_conn.connect()
 
     # Need to perform get hello from DUT first.
+    logging.info("Sending Hello message")
     versions = ['1.0']
     dut_conn.send_msg(hello_msg(versions))
     hello_reply = dut_conn.recv_msg()
 
-    print ("GET FIRST ACL IN CONFIGURATION FROM X-ETH : \n----------------------------------------")
-    conf_xml_subtree = get_config_by_xpath(dut_conn, "/interface/x-eth")
+    x_eth_interface = "0/0/2"
+    logging.info("Get policy acl in name for interface x-eth " + x_eth_interface)
     
-    # Get policy acl in name for interface x-eth 0/0/1
+    conf_xml_subtree = get_config_by_xpath(dut_conn, "/interface/x-eth")
     if conf_xml_subtree is not None:        
         import parse_xml
-        instance_node = parse_xml.get_instance(conf_xml_subtree, "x-eth", "0/0/1")
+        instance_node = parse_xml.get_instance(conf_xml_subtree, "x-eth", x_eth_interface)
         acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
-
-        print ("Policy in : " + acl_in_policy_name)
+        if acl_in_policy_name != None :
+            logging.info("Policy acl in : " + acl_in_policy_name)
 
 def original_main() :
     # main

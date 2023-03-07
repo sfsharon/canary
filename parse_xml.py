@@ -1,40 +1,14 @@
 """
 Parse XML from DUT
 """
-
-xml_resp = """<?xml version="1.0" ?>
-<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-    <data>
-        <interface xmlns="http://compass-eos.com/ns/compass_yang">
-            <x-eth>
-                <instance>0/0/0</instance>
-                <speed>1000</speed>
-                <admin-state>up</admin-state>
-                <ipv4-address>10.1.0.1/24</ipv4-address>
-                <mpls>enable</mpls>
-            </x-eth>
-
-            <x-eth>
-                <instance>0/0/1</instance>
-                <speed>1000</speed>
-                <policy>
-                    <acl>
-                        <in>pol_ipv4</in>
-                    </acl>
-                </policy>
-            </x-eth>
-
-            <x-eth>
-                <instance>0/0/2</instance>
-                <speed>10000</speed>
-            </x-eth>
-        </interface>
-    </data>
-</rpc-reply>
-"""
-
+import logging
+logging.basicConfig(
+                    format='%(asctime)s.%(msecs)03d [%(funcName)s line %(lineno)d] %(levelname)-8s %(message)s',                       
+                    level=logging.INFO,
+                    datefmt='%H:%M:%S')
 import xml.dom.minidom
 
+# Module Exception class 
 class ErrorConf(Exception):
     """
     My exception
@@ -69,18 +43,17 @@ def _get_unique_node (xml_tree_dom, tag_name) :
     Get a node that appears only once in the xml_tree_dom object
     Input  : xml_tree_dom
              tag_name - Tag name to search inside the xml_tree_dom xml.minidom object
-    Output : xml minidom element if exits single tag_name node, None otherwise
+    Output : xml minidom element if exits single tag_name node, otherwise None 
     """
     rv = None
 
     instance_nodes = xml_tree_dom.getElementsByTagName(tag_name)
     if len(instance_nodes) != 1 :
-        raise ErrorConf("Error - Searched for unique xml tag " + tag_name + ", found instead " + str(len(instance_nodes)) + " instances")
-    rv = instance_nodes[0]
+        logging.error("Searched for unique xml tag " + tag_name + ", found instead " + str(len(instance_nodes)) + " instances")
+    else :
+        rv = instance_nodes[0]
 
     return rv
-
-
 
 # *************************************
 # EXTERNAL MODULE FUNCTIONS
@@ -138,13 +111,50 @@ def get_instance_text_attribute (instance_node, xml_path_list) :
         return attr
 
     for tag_name in xml_path_list[1:] :
+        if curr_node == None :
+            break
         curr_node = _get_unique_node(curr_node, tag_name)
 
-    attr = _get_node_text(curr_node)
+    if curr_node != None :
+        attr = _get_node_text(curr_node)
+    
     return attr
 
-
+# ===================================
+# UT
+# ===================================
 if __name__ == "__main__" :
+    xml_resp = """<?xml version="1.0" ?>
+    <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+        <data>
+            <interface xmlns="http://compass-eos.com/ns/compass_yang">
+                <x-eth>
+                    <instance>0/0/0</instance>
+                    <speed>1000</speed>
+                    <admin-state>up</admin-state>
+                    <ipv4-address>10.1.0.1/24</ipv4-address>
+                    <mpls>enable</mpls>
+                </x-eth>
+
+                <x-eth>
+                    <instance>0/0/1</instance>
+                    <speed>1000</speed>
+                    <policy>
+                        <acl>
+                            <in>pol_ipv4</in>
+                        </acl>
+                    </policy>
+                </x-eth>
+
+                <x-eth>
+                    <instance>0/0/2</instance>
+                    <speed>10000</speed>
+                </x-eth>
+            </interface>
+        </data>
+    </rpc-reply>
+    """
+
     instance_node = get_instance(xml_resp, "x-eth", "0/0/1")
     acl_in_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
     print (acl_in_policy_name)
