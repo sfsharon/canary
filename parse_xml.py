@@ -19,7 +19,7 @@ class ErrorConf(Exception):
 # INTERNAL MODULE FUNCTIONS
 # *************************************
 
-def _get_node_text (node):
+def _get_node_text_value (node):
     """
     Parse xml minidom element for text value
     Input  : node - xml minidom element
@@ -38,6 +38,25 @@ def _get_node_text (node):
 
     return rv
  
+def _get_node_tag_value (node):
+    """
+    Parse xml minidom element for node tag value
+    Input  : node - xml minidom element
+    Output : String - Node's tag 
+    """
+    rv = None       
+    child_node = node.childNodes
+
+    # Assumptions verify
+    if   len(child_node) != 1 :
+        raise ErrorConf("Error in number of child node. found " + str(len(child_node)) + " instances")
+    elif child_node[0].nodeType != child_node[0].TEXT_NODE :
+        raise ErrorConf("Error in child node.type. Expecting text type, got instead " + str(child_node[0].nodeType) + " type")
+    
+    rv = child_node[0].data 
+
+    return rv
+
 def _get_unique_node (xml_tree_dom, tag_name) :
     """
     Get a node that appears only once in the xml_tree_dom object
@@ -59,13 +78,13 @@ def _get_unique_node (xml_tree_dom, tag_name) :
 # EXTERNAL MODULE FUNCTIONS
 # *************************************
 
-def get_instance (xml_tree, filter_name, instance_name) :
+def get_instance_by_string (xml_tree, filter_name, instance_string_name) :
     """
-    Find instance_name by parsing XML received xml_tree from DUT, according to the xml_path.
-    Input : xml_tree - XML string for query the "x-eth" tag name
-            filter_name - tag name to filter accordingly.
-            instance_name - String 
-    Return value : xml node of requred instance_name under the given xml_path
+    Find instance_string_name by parsing XML received xml_tree from DUT, according to the xml_path.
+    Input : xml_tree - XML string 
+            filter_name - tag name to filter xml tree.
+            instance_string_name -  
+    Return value : xml node of required instance_string_name under the given xml_path
     """
     
     dom = xml.dom.minidom.parseString(xml_tree)
@@ -73,15 +92,41 @@ def get_instance (xml_tree, filter_name, instance_name) :
     ret_node = None
 
     instance_list = dom.getElementsByTagName(filter_name)
+
     for dom_elem in instance_list :
         instance_node = _get_unique_node(dom_elem, "instance")
-        node_text = _get_node_text(instance_node)
+        node_text = _get_node_text_value(instance_node)
         
-        if node_text == instance_name :
+        if node_text == instance_string_name :
             ret_node = dom_elem
             break
 
     return ret_node
+
+def get_instance_by_tag (xml_tree, filter_name, instance_tag) :
+    """
+    Find instance_tag by parsing XML received xml_tree from DUT, according to the xml_path.
+    Input : xml_tree - XML string 
+            filter_name - tag name to filter xml tree.
+            instance_tag -  
+    Return value : xml node of required instance_tag under the given xml_path
+    """
+    
+    dom = xml.dom.minidom.parseString(xml_tree)
+
+    ret_node = None
+
+    instance_list = dom.getElementsByTagName(filter_name)
+
+    for dom_elem in instance_list :
+        instance_node = _get_unique_node(dom_elem, instance_tag)
+        
+        if instance_node != None and instance_node.tagName == instance_tag :
+            ret_node = instance_tag
+            break
+
+    return ret_node
+
 
 def get_instance_text_attribute (instance_node, xml_path_list) :
     """
@@ -107,7 +152,7 @@ def get_instance_text_attribute (instance_node, xml_path_list) :
 
     # Edge case - Only one tag name in xml_path_list
     if len(xml_path_list) == 1 :
-        attr = _get_node_text(curr_node)
+        attr = _get_node_text_value(curr_node)
         return attr
 
     for tag_name in xml_path_list[1:] :
@@ -116,7 +161,7 @@ def get_instance_text_attribute (instance_node, xml_path_list) :
         curr_node = _get_unique_node(curr_node, tag_name)
 
     if curr_node != None :
-        attr = _get_node_text(curr_node)
+        attr = _get_node_text_value(curr_node)
     
     return attr
 
@@ -124,15 +169,8 @@ def get_instance_text_attribute (instance_node, xml_path_list) :
 # UT
 # ===================================
 if __name__ == "__main__" :
-    xml_req = f"""<?xml version="1.0" encoding="UTF-8"?>
-                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-                    <edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>
-                        <target><{db}/></target>
-                        <config>{conf_xml}</config>
-                    </edit-config>
-                </rpc>
-                """
-    xml_resp = """<?xml version="1.0" ?>
+
+    xml_conf_resp = """<?xml version="1.0" ?>
     <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
         <data>
             <interface xmlns="http://compass-eos.com/ns/compass_yang">
@@ -177,9 +215,20 @@ if __name__ == "__main__" :
         </x-eth>
     </interface>
     """
-    print(xml_filter)
 
-    instance_node = get_instance(xml_resp, "x-eth", "0/0/1")
+    # The response :
+    xml_command_resp = """<?xml version="1.0" encoding="UTF-8"?>
+                            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                                <ok/>
+                            </rpc-reply>
+                        """
+
+    # Get policy acl name from XML configuration
+    instance_node = get_instance_by_string(xml_conf_resp, "x-eth", "0/0/1")
     acl_in_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
     print (acl_in_policy_name)
+    
+    # Get response (ok / error) from DUT xml
+    instance_node = get_instance_by_tag(xml_command_resp, "rpc-reply", "ok") 
+    
     print("finish")

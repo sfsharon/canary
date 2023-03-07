@@ -476,16 +476,19 @@ def strip(node):
 # ***************************************************************************************
 # Canary Helper functions
 # ***************************************************************************************
-def get_config_by_xpath(connection, xpath) :
+def get_config_by_xpath(connection, xml_path_list) :
     """
-    Input : xpath input with type string.
-            connection object
-    Return value : XML Configuration 
+    Input : xml_path_list - String list of XML path.
+            connection  - Netconf connection object object
+    Return value : XML tree Configuration string
     """
     cmd = "get-config"
     db = "running"
     wdefaults = ""
     winactive = False
+
+    xpath = '/' + '/'.join(xml_path_list)
+
     msg = get_msg(cmd, db, xpath, wdefaults, winactive)
     connection.send_msg(msg)
     dut_reply = connection.recv_msg()
@@ -496,6 +499,12 @@ def my_main() :
     """
     My Main
     """
+    X_ETH_TAG_NAME     = "x-eth"
+    RPC_REPLY_TAG_NAME = "rpc-reply"
+    OK_TAG_NAME        = "ok"
+    ACL_IN_PATH_LIST   = ["policy", "acl", "in"]
+    X_ETH_XML_PATH     = ["interface", "x-eth"]
+
     dut_conn = MyNetconf(hostname = "10.3.10.1", port = 2022, username = "admin", password = "admin", 
                          publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
 
@@ -516,16 +525,17 @@ def my_main() :
     x_eth_interface = "0/0/1"
     logging.info("Get policy acl in name for interface x-eth " + x_eth_interface)
     
-    conf_xml_subtree = get_config_by_xpath(dut_conn, "/interface/x-eth")
+    conf_xml_subtree = get_config_by_xpath(dut_conn, X_ETH_XML_PATH)
     if conf_xml_subtree is not None:        
         import parse_xml
-        instance_node = parse_xml.get_instance(conf_xml_subtree, "x-eth", x_eth_interface)
-        acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
+        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, X_ETH_TAG_NAME, x_eth_interface)
+        acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ACL_IN_PATH_LIST)
         if acl_in_policy_name != None :
             logging.info("Policy acl in : " + acl_in_policy_name)
         else :
             logging.info("No Policy acl in")
     
+
     # Testing - Configre acl in policy on 0/0/3
     # ===============================================================
     x_eth_interface = "0/0/3"
@@ -555,6 +565,7 @@ def my_main() :
                     </edit-config>
                 </rpc>
                 """
+    
     dut_conn.send_msg(xml_req)
     xml_resp = dut_conn.recv_msg()
     print(xml_resp)
@@ -563,7 +574,11 @@ def my_main() :
     xml_req = commit_msg()
     dut_conn.send_msg(xml_req)
     xml_resp = dut_conn.recv_msg()
-    print(xml_resp)
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull.")
+    else :
+        logging.info ("Failed !")
 
 if __name__ == "__main__" :
     my_main()
