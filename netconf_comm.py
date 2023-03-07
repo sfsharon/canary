@@ -492,13 +492,16 @@ def get_config_by_xpath(connection, xml_path_list) :
     dut_reply = connection.recv_msg()
     return dut_reply
 
-def configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
+# ***************************************************************************************
+# Canary Commands functions
+# ***************************************************************************************
+def cmd_configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     import parse_xml
 
     RPC_REPLY_TAG_NAME = "rpc-reply"
     OK_TAG_NAME        = "ok"
 
-    logging.info("Set policy acl in name for interface x-eth " + x_eth_interface)
+    logging.info(f"Setting policy acl in {acl_in_policy_name} for interface x-eth {x_eth_interface}")
 
     xml_command = f"""
     <interface xmlns="http://compass-eos.com/ns/compass_yang">
@@ -539,13 +542,13 @@ def configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     else :
         logging.info ("Failed !")    
 
-def delete_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
+def cmd_delete_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     import parse_xml
 
     RPC_REPLY_TAG_NAME = "rpc-reply"
     OK_TAG_NAME        = "ok"
 
-    logging.info("Deleting policy acl in name for interface x-eth " + x_eth_interface)
+    logging.info(f"Deleting policy acl in {acl_in_policy_name} for interface x-eth {x_eth_interface}")
 
     xml_command = f"""
     <interface xmlns="http://compass-eos.com/ns/compass_yang">
@@ -586,51 +589,65 @@ def delete_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     else :
         logging.info ("Failed !")    
 
-
-def my_main() :
-    """
-    My Main
-    """
-    import parse_xml
-    
-    X_ETH_TAG_NAME     = "x-eth"
-    ACL_IN_PATH_LIST   = ["policy", "acl", "in"]
-    X_ETH_XML_PATH     = ["interface", "x-eth"]
-
-    dut_conn = MyNetconf(hostname = "10.3.10.1", port = 2022, username = "admin", password = "admin", 
-                         publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
-
-    acl_in_policy_name = None
-
-    logging.info("Connecting to DUT")
-    dut_conn.connect()
-
-    # Perform get hello from DUT first
-    # ===============================================================    
+def cmd_hello(dut_conn):
+    """Perform get hello from DUT first"""
     logging.info("Sending Hello message")
     versions = ['1.0']
     dut_conn.send_msg(hello_msg(versions))
     hello_reply = dut_conn.recv_msg()
 
-    # Get acl in policy of c-eth 0/0/2
-    # ===============================================================
-    x_eth_interface = "0/0/1"
-    logging.info("Get policy acl in name for interface x-eth " + x_eth_interface)
+def cmd_get_policy_acl_in_name(dut_conn, interface) :
+    """Get acl in policy of interface"""
     
+    import parse_xml
+
+    X_ETH_TAG_NAME     = "x-eth"
+    ACL_IN_PATH_LIST   = ["policy", "acl", "in"]
+    X_ETH_XML_PATH     = ["interface", "x-eth"]
+
+    logging.info("Get policy acl in name for interface x-eth " + interface)
+    policy_name = None 
+
     conf_xml_subtree = get_config_by_xpath(dut_conn, X_ETH_XML_PATH)
     if conf_xml_subtree is not None:        
-        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, X_ETH_TAG_NAME, x_eth_interface)
-        acl_in_policy_name = parse_xml.get_instance_text_attribute (instance_node, ACL_IN_PATH_LIST)
-        if acl_in_policy_name != None :
-            logging.info("Policy acl in : " + acl_in_policy_name)
+        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, X_ETH_TAG_NAME, interface)
+        policy_name = parse_xml.get_instance_text_attribute (instance_node, ACL_IN_PATH_LIST)
+        if policy_name != None :
+            logging.info(f"Policy acl in {policy_name}")
         else :
             logging.info("No Policy acl in")
     
+    return policy_name
 
-    # Testing - Configre acl in policy on 0/0/3
-    # ===============================================================
-    # configure_acl_in(dut_conn, "0/0/3", acl_in_policy_name)
-    delete_acl_in(dut_conn, "0/0/3", acl_in_policy_name)
+def my_main() :
+    """
+    My Main - ACL test case example
+    """
+    X_ETH_VALUE             = "0/0/1"
+    NEW_POLICY_ACL_IN_NAME  = "pol_ipv4"
+    HOST_NAME               = "10.3.10.1"
+    NETCONF_PORT            = 2022
+    CPM_USER                = "admin"
+    CPM_PASSWORD            = "admin"
+
+    dut_conn = MyNetconf(hostname = HOST_NAME, port = NETCONF_PORT, username = CPM_USER, password = CPM_PASSWORD, 
+                         publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
+
+    logging.info("Connecting to DUT")
+    dut_conn.connect()
+
+    # Perform get hello from DUT first.
+    cmd_hello(dut_conn)
+
+    # Get acl in policy name of X_ETH_VALUE
+    acl_in_policy_name = cmd_get_policy_acl_in_name(dut_conn, X_ETH_VALUE)
+
+    if acl_in_policy_name == None :
+        # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
+        cmd_configure_acl_in(dut_conn, X_ETH_VALUE, NEW_POLICY_ACL_IN_NAME)
+    else :
+        # Found acl in policy name on X_ETH_NAME. Delete it
+        cmd_delete_acl_in(dut_conn, X_ETH_VALUE, acl_in_policy_name)
 
 if __name__ == "__main__" :
     my_main()
