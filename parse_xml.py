@@ -3,7 +3,7 @@ Parse XML from DUT
 """
 import logging
 logging.basicConfig(
-                    format='%(asctime)s.%(msecs)03d [%(funcName)s line %(lineno)d] %(levelname)-8s %(message)s',                       
+                    format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 import xml.dom.minidom
@@ -124,6 +124,14 @@ def get_instance_text_attribute (instance_node, xml_path_list) :
 # UT
 # ===================================
 if __name__ == "__main__" :
+    xml_req = f"""<?xml version="1.0" encoding="UTF-8"?>
+                <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                    <edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>
+                        <target><{db}/></target>
+                        <config>{conf_xml}</config>
+                    </edit-config>
+                </rpc>
+                """
     xml_resp = """<?xml version="1.0" ?>
     <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
         <data>
@@ -154,6 +162,22 @@ if __name__ == "__main__" :
         </data>
     </rpc-reply>
     """
+
+    x_eth_interface = "0/0/2"
+    acl_in_policy_name = "pol_ipv6"
+    xml_filter = f"""
+    <interface xmlns="http://compass-eos.com/ns/compass_yang">
+        <x-eth>
+            <instance>{x_eth_interface}</instance>
+            <policy>
+                    <acl>
+                    <in>{acl_in_policy_name}</in>
+                </acl>
+            </policy>
+        </x-eth>
+    </interface>
+    """
+    print(xml_filter)
 
     instance_node = get_instance(xml_resp, "x-eth", "0/0/1")
     acl_in_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
