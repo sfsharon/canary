@@ -1,5 +1,8 @@
+"""
+Implement Netconf communication (get and set configuration) for DUT
+"""
+
 import sys
-import os
 
 import paramiko
 
