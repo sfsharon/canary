@@ -3,8 +3,6 @@ Client for running tests on DUT. Script runs on dev machine, i.e. python 3
 """
 
 import socket
-import sys
-
 import configparser
 
 constants = configparser.ConfigParser()
