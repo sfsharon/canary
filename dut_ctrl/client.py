@@ -1,28 +1,38 @@
-import socket
+"""
+Client for running tests on DUT. Script runs on dev machine, i.e. python 3
+"""
 
+import socket
 import sys
 
-#HOST = 'localhost'
-HOST = '10.3.10.10'
-PORT = 8000
+import configparser
 
-COMMAND = sys.argv[1]
+constants = configparser.ConfigParser()
+constants.read('config.ini')
 
-# create a socket object
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+HOST = constants['COMM']['HOST']
+PORT = int(constants['COMM']['TCP_PORT'])
 
-# connect to the server
-client_socket.connect((HOST, PORT))
+def send_cmd(command) :
+    """
+    Send string command to DUT server for executing related tet operations
+    """
+    # create a socket object
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# send data to the server
-#client_socket.sendall('test1')
-client_socket.sendall(COMMAND)
+    # connect to the server
+    client_socket.connect((HOST, PORT))
 
-# receive data from the server
-data = client_socket.recv(1024)
+    # Send data to the server
+    client_socket.send(command.encode('utf-8'))
 
-print('Received:', data)
+    # receive data from the server
+    data = client_socket.recv(1024)
 
-# close the connection
-client_socket.close()
+    print('Received:', data)
 
+    # close the connection
+    client_socket.close()
+
+if __name__ == "__main__" :
+    send_cmd('test1')

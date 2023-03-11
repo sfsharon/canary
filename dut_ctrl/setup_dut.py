@@ -65,11 +65,20 @@ def create_directory_and_copy_files (host, workdir, copy_file_list):
                 logging.info(f"Copying {file} to the {workdir}")
                 sftp.put(file, workdir + "/" + file)
 
+def activate_dut_test_server() :
+    """
+    Activate DUT test server by running script file uploaded by create_directory_and_copy_files()
+    """
+    pass
+
 if __name__ == "__main__" :
     # Test constants
     HOST = '10.3.10.10'
     WORKDIR = "/root/workspace"
-    COPY_FILE_LIST = ["server.py", "monitor_logfile.py"]
+    COPY_FILE_LIST = ["server.py", "monitor_logfile.py", "config.ini"]
+
+    # Create test environment on DUT 
+    create_directory_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
 
     # Run operation
-    create_directory_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
+    activate_dut_test_server()

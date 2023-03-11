@@ -1,8 +1,17 @@
+"""
+This code is running on the DUT. THerefore, it should support only python 2 code.
+"""
 import socket
 
-#HOST = 'localhost'
-HOST = '10.3.10.10'
-PORT = 8000
+import ConfigParser
+
+config = ConfigParser.RawConfigParser()
+config.read('config.ini')
+
+HOST = config.get('COMM', 'HOST')
+PORT = config.getint('COMM', 'TCP_PORT')
+
+print('Server started on address ' + HOST + ':' + str(PORT))
 
 # create a socket object
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -13,7 +22,7 @@ server_socket.bind((HOST, PORT))
 # listen for incoming connections (server mode) with one client allowed to queue
 server_socket.listen(1)
 
-print('Server started!')
+print('Server up and running !')
 
 while True:
     # wait for a client connection
