@@ -82,9 +82,6 @@ def activate_dut_test(host, server_cmd, client_path) :
 
     logging.info(f"Run client command locally: {client_path}")
     import client
-    logging.info("Waiting for 3 seconds for the server to come alive")
-    import time
-    time.sleep(3)
     client.send_cmd("test1")
 
 

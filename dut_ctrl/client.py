@@ -21,12 +21,42 @@ def send_cmd(command) :
     """
     Send string command to DUT server for executing related tet operations
     """
-    # create a socket object
+    
+    # Create a socket object
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # Connect to the server
-    logging.info(f"Connecting to {HOST}/{PORT}")
-    client_socket.connect((HOST, PORT))
+    # Connect to DUT
+    # -----------------------------------------------
+    import time
+    # The number of connection attempts
+    attempts = 0
+
+    # The maximum number of attempts
+    max_attempts = 10
+
+    # The delay between attempts in seconds
+    delay = 0.1
+
+    # A flag to indicate if the connection is successful
+    connected = False
+
+    # A while loop that will keep trying to connect
+    while not connected and attempts < max_attempts:
+        # Increment the number of attempts
+        attempts += 1
+
+        # Try to connect to the server
+        try:
+            logging.info(f"Connecting to {HOST}/{PORT} attempt {attempts}")
+            client_socket.connect((HOST, PORT)) 
+            connected = True
+        except (BlockingIOError, ConnectionRefusedError) as error:
+            # The connection was refused or timed out
+            logging.error(error)
+            logging.error(f"Connection attempt #{attempts} failed. Waiting {delay} seconds,")
+            # Wait for some time before retrying
+            time.sleep(delay)
+        
 
     # Send data to the server
     logging.info(f"Sending {command}")
@@ -34,7 +64,7 @@ def send_cmd(command) :
 
     # receive data from the server
     data = client_socket.recv(1024)
-    logging.info(f"Received: {data.decode('utf-8')}")
+    logging.info(f"{data.decode('utf-8')}")
 
     # close the connection
     client_socket.close()

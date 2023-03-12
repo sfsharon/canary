@@ -4,6 +4,7 @@ This code is running on the DUT. THerefore, it should support only python 2 code
 import socket
 import ConfigParser
 import logging
+import sys 
 
 # Configuration configuration
 # ---------------------------------------------------
@@ -63,5 +64,9 @@ try :
         logger.info("Closing connection")
         # Close the connection
         conn.close()
+
+        # Exit after first connectin. Work Around, instead of killing process
+        logger.info("Exiting")
+        sys.exit(0)
 except Exception as e:
     logger.exception(e)
