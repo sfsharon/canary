@@ -5,6 +5,12 @@ Client for running tests on DUT. Script runs on dev machine, i.e. python 3
 import socket
 import configparser
 
+import logging
+logging.basicConfig(
+                    format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
+                    level=logging.INFO,
+                    datefmt='%H:%M:%S')
+
 constants = configparser.ConfigParser()
 constants.read('config.ini')
 
@@ -18,16 +24,17 @@ def send_cmd(command) :
     # create a socket object
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # connect to the server
+    # Connect to the server
+    logging.info(f"Connecting to {HOST}/{PORT}")
     client_socket.connect((HOST, PORT))
 
     # Send data to the server
+    logging.info(f"Sending {command}")
     client_socket.send(command.encode('utf-8'))
 
     # receive data from the server
     data = client_socket.recv(1024)
-
-    print('Received:', data)
+    logging.info(f"Received: {data.decode('utf-8')}")
 
     # close the connection
     client_socket.close()
