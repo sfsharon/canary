@@ -4,6 +4,7 @@ Client for running tests on DUT. Script runs on dev machine, i.e. python 3
 
 import socket
 import configparser
+import sys
 
 import logging
 logging.basicConfig(
@@ -52,11 +53,14 @@ def send_cmd(command) :
             connected = True
         except (BlockingIOError, ConnectionRefusedError) as error:
             # The connection was refused or timed out
-            logging.error(error)
-            logging.error(f"Connection attempt #{attempts} failed. Waiting {delay} seconds,")
+            logging.info(error)
+            logging.info(f"Connection attempt #{attempts} failed. Waiting {delay} seconds,")
             # Wait for some time before retrying
             time.sleep(delay)
-        
+    
+    if attempts == max_attempts :
+        logging.error(f"Could not connect to DUT  {HOST}/{PORT}")
+        sys.exit(1)
 
     # Send data to the server
     logging.info(f"Sending {command}")

@@ -5,6 +5,7 @@ import socket
 import ConfigParser
 import logging
 import sys 
+from os import system
 
 # Configuration configuration
 # ---------------------------------------------------
@@ -31,8 +32,11 @@ logger.addHandler(fh)
 # ---------------------------------------------------
 logger.info('Server started on address ' + HOST + ':' + str(PORT))
 
-# Create a socket object
+# Create a socket object with socket reuse option SO_REUSEADDR, 
+# so to avoid  "[Errno 98] Address already in use" when socket is held in WAIT_TIME state by the kernel,
+# when running several client instances one after the other
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 try :
     # Bind the socket to a public host, and a port
@@ -53,6 +57,10 @@ try :
         
         if data == "test1" :
             logger.info ("Got test1")
+            command = r"screen -r bcmrm -X   stuff   $' Tx 3 PSRC=24 DATA=0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001\n'"
+            result = system(command)
+            logger.info ("Run command " + command)
+            logger.info("Return value: " + str(result))
         else :
             logger.info ("Not recognizable test")
 
@@ -61,8 +69,8 @@ try :
         # Send a response to the client
         conn.sendall('Received: ' + data)
 
-        logger.info("Closing connection")
-        # Close the connection
+        # Close the client connection
+        logger.info("Closing client connection")
         conn.close()
 
         # Exit after first connectin. Work Around, instead of killing process
