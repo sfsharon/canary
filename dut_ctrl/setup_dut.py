@@ -24,14 +24,23 @@ def _remote_exists(sftp, path):
 
 def _run_remote_shell_cmd(ssh_object, cmd_string) :
     """
-    Run remote sheel command
+    Run remote shell command
     """
     import socket
+
+    exit_status = None
+
     try :
         # Execute a command on the remote server and get the output
-        logging.info(f"Running \"{cmd_string}\" :")
-        stdin, stdout, stderr = ssh_object.exec_command(cmd_string)
-        logging.info(f"Output of \"{cmd_string}\" :")
+        logging.info(f"Running remote command\n\"{cmd_string}\" :")
+
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh_object.exec_command(cmd_string)
+
+        exit_status = ssh_stdout.channel.recv_exit_status()
+        if exit_status == 0 :
+            logging.info(f"Remote command succeeded")
+        else :
+            logging.info(f"Command failed with exit status: {exit_status}")
 
     except paramiko.SSHException as e:
         # Handle SSH exception
@@ -39,6 +48,8 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
     except socket.error as e:
         # Handle socket error
         logging.error(f'Network error: {e}')
+
+    return exit_status
 
 # ***************************************************************************************
 # Main function
@@ -67,29 +78,34 @@ def create_directory_and_copy_files (host, workdir, copy_file_list):
                 logging.info(f"Copying {file} to the {workdir}")
                 sftp.put(file, workdir + "/" + file)
 
-def activate_dut_test(host, server_cmd, client_path) :
+def activate_dut_test_1(host, workdir) :
     """
-    Activate DUT test server by running script file uploaded by create_directory_and_copy_files()
+    Run test 1 on DUT :
+    Inject packet into bcm, and test ACL counters
     """
+    rv = None
+
     # Connect to DUT using SSH client
     with paramiko.SSHClient() as ssh:
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logging.info(f"Connecting to host {host}")
         ssh.connect(hostname=host, username="root", password="root")
 
-        logging.info(f"Run server command in DUT: {server_cmd}")
-        _run_remote_shell_cmd (ssh, server_cmd)
+        frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
+        num_of_tx = '3'
+        port = '24' # Value 24 referes to physical port x-eth 0/0/23
+        command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {port}"
 
-    logging.info(f"Run client command locally: {client_path}")
-    import client
-    client.send_cmd("test1")
+        # Run remote command in DUT
+        rv = _run_remote_shell_cmd (ssh, command)
 
+    if rv == 0:
+        logging.info("Test 1 finished successfully")
+    else :
+        logging.info(f"Test 1 failed with return value {rv}")
 
 if __name__ == "__main__" :
-    # Test constants
-
     import configparser
-    import os
 
     # Read globals from ini file
     constants = configparser.ConfigParser()
@@ -99,12 +115,10 @@ if __name__ == "__main__" :
     WORKDIR     = constants['DUT_ENV']['WORKDIR']
     LOG_FILE    = constants['DUT_ENV']['LOG_FILE']
 
-    COPY_FILE_LIST = ["server.py", "monitor_logfile.py", "config.ini"]
-    CLIENT_PATH = "./client.py"
+    COPY_FILE_LIST = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
     # Create test environment on DUT 
     create_directory_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
 
     # Run operation
-    server_cmd = f"cd {WORKDIR};python server.py &"
-    activate_dut_test(HOST, server_cmd, CLIENT_PATH)
+    activate_dut_test_1(HOST, WORKDIR)
