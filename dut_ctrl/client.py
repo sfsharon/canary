@@ -61,6 +61,8 @@ def send_cmd(command) :
     if attempts == max_attempts :
         logging.error(f"Could not connect to DUT  {HOST}/{PORT}")
         sys.exit(1)
+    else :
+        logging.info(f"Connected to DUT  {HOST}/{PORT}")
 
     # Send data to the server
     logging.info(f"Sending {command}")

@@ -6,9 +6,6 @@ Meant to work inside the DUT, therefore code fits with python2
 import pyinotify
 import sys
 
-INPUT_FILE  = sys.argv[1]
-OUTPUT_FILE = sys.argv[2]
-
 class MyEventHandler(pyinotify.ProcessEvent):
     def __init__(self, input_pathname, output_pathname ) :
         f = open(input_pathname, 'r')
@@ -30,18 +27,26 @@ class MyEventHandler(pyinotify.ProcessEvent):
                     #print "new line: ", line.strip()
                     f_out.write(line)
 
-# Create a new watch manager
-wm = pyinotify.WatchManager()
+def monitor_file (input_file, output_file) :
+    """
+    Monitor input_file. If updated, write updates to output_file    
+    """
+    # Create a new watch manager
+    wm = pyinotify.WatchManager()
 
-# Set up the event handler
-handler = MyEventHandler(INPUT_FILE, OUTPUT_FILE)
+    # Set up the event handler
+    handler = MyEventHandler(input_file, output_file)
 
-# Create a notifier
-notifier = pyinotify.Notifier(wm, handler)
+    # Create a notifier
+    notifier = pyinotify.Notifier(wm, handler)
 
-# Add the file to be monitored
-#wm.add_watch('/path/to/my/file', pyinotify.IN_MODIFY)
-wm.add_watch(INPUT_FILE, pyinotify.IN_MODIFY)
+    # Add the file to be monitored
+    wm.add_watch(input_file, pyinotify.IN_MODIFY)
 
-# Start the notifier
-notifier.loop()
+    # Start the notifier
+    notifier.loop()
+
+if __name__ == "__main__" :
+    input_file = '/vbox/lc_image/root/var/log/bcmrm_bsl_trace_buffer.trace'
+    output_file = '/root/workspace/bcmrm_bsl_trace_buffer.trace'
+    monitor_file(input_file, output_file)

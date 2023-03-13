@@ -7,6 +7,10 @@ import logging
 import sys 
 from os import system
 
+# Monitoring bcmrm_bsl file 
+import monitor_logfile
+#import threading
+
 # Configuration configuration
 # ---------------------------------------------------
 config = ConfigParser.RawConfigParser()
@@ -46,13 +50,21 @@ try :
     server_socket.listen(1)
 
     logger.info('Server up and running !')
-
     while True:
         # Wait for a client connection
+        # -----------------------------------------------------------------        
         conn, addr = server_socket.accept()
         logger.info('Connected from client: ' + str(addr))
 
+#        # Attach log to bcmrm_bsl_trace_buffer.trace
+#        # -----------------------------------------------------------------
+#        input_file = '/vbox/lc_image/root/var/log/bcmrm_bsl_trace_buffer.trace'
+#        output_file = '/root/workspace/bcmrm_bsl_trace_buffer.trace'
+#        monitor_bcmrm_log_thread = threading.Thread(target=monitor_logfile.monitor_file, args=(input_file, output_file))
+#        monitor_bcmrm_log_thread.start()
+
         # Receive data from the client
+        # ------------------------------------------------------------------
         data = conn.recv(1024)
         
         if data == "test1" :
@@ -78,3 +90,9 @@ try :
         sys.exit(0)
 except Exception as e:
     logger.exception(e)
+    # Close the client connection
+    logger.info("Got exception - Closing client connection")
+    conn.close()
+    sys.exit(1)
+
+
