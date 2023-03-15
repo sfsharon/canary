@@ -20,14 +20,15 @@ def open_session(device_number):
     
     CPM_ADDRESS = f"10.3.{device_number[2:4]}.1"
     PROMPT      = f"R{device_number}"
-
+    TIMEOUT     = 10
     child = None
 
     try :
         # SSH into the machine
         logging.info(f"Connecting to device {device_number}")
         child = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
-                              encoding='utf-8')
+                              encoding='utf-8',
+                              timeout=TIMEOUT)
 
         # Wait for the password prompt and enter the password
         logging.info("Wait for password prompt")
