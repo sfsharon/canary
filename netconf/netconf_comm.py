@@ -50,6 +50,7 @@ class MyNetconf(object):
         self.saved = ""
 
     def connect(self):
+        logging.info(f"Connecting to {self.hostname}/{self.port}")
         sock = create_connection(self.hostname, self.port)
         
         self.ssh = paramiko.Transport(sock)
@@ -480,7 +481,7 @@ def strip(node):
 def get_config_by_xpath(connection, xml_path_list) :
     """
     Input : xml_path_list - String list of XML path.
-            connection  - Netconf connection object object
+            connection  - Netconf connection object 
     Return value : XML tree Configuration string
     """
     cmd = "get-config"
@@ -636,7 +637,6 @@ def my_main() :
     dut_conn = MyNetconf(hostname = HOST_NAME, port = NETCONF_PORT, username = CPM_USER, password = CPM_PASSWORD, 
                          publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
 
-    logging.info("Connecting to DUT")
     dut_conn.connect()
 
     # Perform get hello from DUT first.
