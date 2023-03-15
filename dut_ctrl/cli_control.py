@@ -17,23 +17,29 @@ def open_session(device_number):
     Input : Device number, such as 3010
     Return value : pexpect child
     """
+    
     CPM_ADDRESS = f"10.3.{device_number[2:4]}.1"
     PROMPT      = f"R{device_number}"
 
-    # SSH into the machine
-    logging.info(f"Connecting to device {device_number}")
-    child = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
-                          encoding='utf-8')
+    child = None
 
-    # Wait for the password prompt and enter the password
-    logging.info("Wait for password prompt")
-    child.expect('password:')
+    try :
+        # SSH into the machine
+        logging.info(f"Connecting to device {device_number}")
+        child = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
+                              encoding='utf-8')
 
-    logging.info("send password")
-    child.sendline('admin')
+        # Wait for the password prompt and enter the password
+        logging.info("Wait for password prompt")
+        child.expect('password:')
 
-    logging.info(f"Expecting prompt {PROMPT}")
-    child.expect(f'.*{PROMPT}.*')
+        logging.info("send password")
+        child.sendline('admin')
+
+        logging.info(f"Expecting prompt {PROMPT}")
+        child.expect(f'.*{PROMPT}.*')
+    except pexpect.exceptions.TIMEOUT :
+        logging.error(f"Cannot connect to device {device_number}")
 
     return child
 
@@ -63,7 +69,8 @@ def parse_acl_show_detail(return_value) :
     # ------------------------
     # IMPLEMENT
     # ------------------------
-    
+    pass
+
 if __name__ == "__main__" :
     DEVICE_NUMBER = '3010'
 
