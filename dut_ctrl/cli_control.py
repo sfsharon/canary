@@ -79,7 +79,7 @@ if __name__ == "__main__" :
 
     # print_system_mod(child)
 
-    print_acl_interface_details(child, 1)
-    print_acl_interface_details(child, 1)
+    print_acl_interface_details(child, 23)
+    print_acl_interface_details(child, 23)
 
     logging.info("Finished")
