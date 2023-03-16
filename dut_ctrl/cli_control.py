@@ -10,8 +10,7 @@ logging.basicConfig(
 
 import pexpect
 
-
-def open_session(device_number):
+def open_cpm_session(device_number):
     """
     Open a pexpect session to a DUT CLI shell
     Input : Device number, such as 3010
@@ -75,7 +74,7 @@ def parse_acl_show_detail(return_value) :
 if __name__ == "__main__" :
     DEVICE_NUMBER = '3010'
 
-    child = open_session(DEVICE_NUMBER)
+    child = open_cpm_session(DEVICE_NUMBER)
 
     # print_system_mod(child)
 

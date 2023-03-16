@@ -10,6 +10,17 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
+# ------------------------------------------------
+# GLOBALS
+# ------------------------------------------------
+SNMP_CTR_UPDATE_TIME = 40   # Time needed for SNMP in DUT to update the counter
+
+# ------------------------------------------------
+# EXCEPTIONS
+# ------------------------------------------------
+class TestFailed(Exception) :
+    pass
+
 # ***************************************************************************************
 # Module Helper functions
 # ***************************************************************************************
@@ -52,10 +63,7 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 
     return exit_status
 
-# ***************************************************************************************
-# Main function
-# ***************************************************************************************
-def create_workdir_and_copy_files (host, workdir, copy_file_list):
+def _create_workdir_and_copy_files (host, workdir, copy_file_list):
     """
     Move testing files into workdir in DUT.
     If workdir already exists, first delete it completly.
@@ -79,6 +87,10 @@ def create_workdir_and_copy_files (host, workdir, copy_file_list):
                 logging.info(f"Copying {file} to the {workdir}")
                 sftp.put(file, workdir + "/" + file)
 
+# ***************************************************************************************
+# TEST #1 
+# Transmit packet, verify ACL counters incremented
+# ***************************************************************************************
 def activate_dut_test_1(host, workdir) :
     """
     Run test 1 on DUT :
@@ -91,41 +103,49 @@ def activate_dut_test_1(host, workdir) :
         4. Read ACL counter value, and assert that it incremented the value of packets injected 
            (Using SNMP)
     """
+    # Test parameters
     port = '24' # Value 24 referes to port x-eth 0/0/23
+    num_of_tx = '3'
+    frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
 
-    rv = None
-
-    acl_in_counter_prev = snmp_comm.acl_in_rule_r1_counter(int(port) - 1)
+    acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(int(port) - 1))
 
     # Connect to DUT using SSH client
     with paramiko.SSHClient() as ssh:
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         logging.info(f"Connecting to host {host}")
         ssh.connect(hostname=host, username="root", password="root")
-
-        frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
-        num_of_tx = '3'
+        
         command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {port}"
 
         # Run remote command in DUT
         rv = _run_remote_shell_cmd (ssh, command)
 
-    # Giving the counters a chance to update. 
+        if rv != 0 :
+            raise TestFailed(f"Test #1 failed with rv {rv}, when running remote command \"{command}\"")
+        
+    # Giving the SNMP counters a chance to update. 
     # Probably some periodic thread in DUT that updates counters for SNMP
-    for i in range(30) :
+    for i in range(SNMP_CTR_UPDATE_TIME) :
         import time
-        logging.info(f"Waiting {i} seconds out of 30")
+        if i % 10 == 0 :
+            logging.info(f"Waited {i} seconds out of {SNMP_CTR_UPDATE_TIME} for SNMP to update DUT counters")
         time.sleep(1)
 
-    acl_in_counter_curr = snmp_comm.acl_in_rule_r1_counter(int(port) - 1)
-    logging.info(f"Prev acl in counter: {acl_in_counter_prev}\nCurr acl in counter: {acl_in_counter_curr}")
+    # Verify counters incremented correctly
+    num_of_tx = int(num_of_tx)
+    acl_in_counter_curr = int(snmp_comm.acl_in_rule_r1_counter(int(port) - 1))
 
-    if rv == 0:
+    if (acl_in_counter_curr - acl_in_counter_prev) == num_of_tx :
         logging.info("Test 1 finished successfully")
     else :
-        logging.info(f"Test 1 failed with return value {rv}")
+        logging.info(f"Test 1 failed: Prev acl in counter: {acl_in_counter_prev}, Curr acl in counter: {acl_in_counter_curr}")
 
 if __name__ == "__main__" :
+
+    # ***************************************************************************************
+    # TEST HARNESS
+    # ***************************************************************************************
     import configparser
 
     # Read globals from ini file
@@ -138,7 +158,7 @@ if __name__ == "__main__" :
     COPY_FILE_LIST = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
     # Create test environment on DUT 
-    create_workdir_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
+    _create_workdir_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
 
     # Run operation
     activate_dut_test_1(HOST, WORKDIR)
