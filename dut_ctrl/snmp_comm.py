@@ -25,17 +25,31 @@ DUT configuration :
     !
 
 """
-
 import logging
+import configparser
+from pysnmp.hlapi import *
+
+
 logging.basicConfig(
                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s', 
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
-from pysnmp.hlapi import *
-
+# ------------------------------------------------
+# EXCEPTIONS
+# ------------------------------------------------
 class TimeoutCommunicationToDut(Exception) :
     pass
+
+# ------------------------------------------------
+# GLOBALS
+# ------------------------------------------------
+# Read globals from ini file
+constants = configparser.ConfigParser()
+constants.read('config.ini')
+COMMUNITY_NAME  = constants['SNMP']['COMMUNITY_NAME']
+HOST            = constants['COMM']['HOST_CPM']
+
 
 # ------------------------------------------------
 # SNMP OID CONSTANS
@@ -100,7 +114,7 @@ PORT_TO_OID_MAP = { 0:1073741824,
 # ------------------------------------------------
 def _get_snmp_val (community_name, host, oid) :    
 
-    logging.info(f"Getting SNMP information from Host: {host}, Port: {port}, OID: {oid} ")
+    logging.info(f"Getting SNMP information from Host: {host}, OID: {oid}")
 
     oid = ObjectIdentity(*oid)
     errorIndication, errorStatus, errorIndex, varBinds = next(
@@ -125,25 +139,17 @@ def _get_snmp_val (community_name, host, oid) :
 # ------------------------------------------------
 # MODULE API FUNCTIONS
 # ------------------------------------------------
-def acl_in_rule_r1_counter(community_name, host, port) :
+def acl_in_rule_r1_counter(port) :
     acl_in_rule_r1_counter_oid = ['SNMPv2-SMI', 'enterprises', '36348', '1', '1', '2', '3', '2', '2', '1', '1', '5', str(PORT_TO_OID_MAP[port]), '1', '2']
-    val = _get_snmp_val(community_name, host, acl_in_rule_r1_counter_oid)
+    val = _get_snmp_val(COMMUNITY_NAME, HOST, acl_in_rule_r1_counter_oid)
     logging.info(f"Got value for {port}: {val}")
+    return val
 
 # ------------------------------------------------
 # UT
 # ------------------------------------------------
 if __name__ == "__main__" :
-    import configparser
-
-    # Read globals from ini file
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
-    COMMUNITY_NAME  = constants['SNMP']['COMMUNITY_NAME']
-    HOST            = constants['COMM']['HOST_CPM']
-
-    port = 23
-    acl_in_rule_r1_counter(COMMUNITY_NAME, HOST, port)
+    acl_in_rule_r1_counter(port = 23)
 
     
     

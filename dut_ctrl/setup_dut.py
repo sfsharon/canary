@@ -2,8 +2,9 @@
 Setup environment in DUT for starting the testing
 """
 import paramiko
-
 import logging
+import snmp_comm
+
 logging.basicConfig(
                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
                     level=logging.INFO,
@@ -54,10 +55,10 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 # ***************************************************************************************
 # Main function
 # ***************************************************************************************
-def create_directory_and_copy_files (host, workdir, copy_file_list):
+def create_workdir_and_copy_files (host, workdir, copy_file_list):
     """
-    Move testing files into directory in DUT.
-    If already exists, first delete workdir directory.
+    Move testing files into workdir in DUT.
+    If workdir already exists, first delete it completly.
     """
     # Connect to DUT using SSH client
     with paramiko.SSHClient() as ssh:
@@ -81,9 +82,20 @@ def create_directory_and_copy_files (host, workdir, copy_file_list):
 def activate_dut_test_1(host, workdir) :
     """
     Run test 1 on DUT :
-    Inject packet into bcm, and test ACL counters
+        1. Configure ACL policy on port 23 
+           (Using Netconf)
+        2. Read ACL counter value 
+           (Using SNMP)
+        3. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
+           (Using BCM Diagnostic shell)
+        4. Read ACL counter value, and assert that it incremented the value of packets injected 
+           (Using SNMP)
     """
+    port = '24' # Value 24 referes to port x-eth 0/0/23
+
     rv = None
+
+    acl_in_counter_prev = snmp_comm.acl_in_rule_r1_counter(int(port) - 1)
 
     # Connect to DUT using SSH client
     with paramiko.SSHClient() as ssh:
@@ -93,11 +105,20 @@ def activate_dut_test_1(host, workdir) :
 
         frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
         num_of_tx = '3'
-        port = '24' # Value 24 referes to physical port x-eth 0/0/23
         command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {port}"
 
         # Run remote command in DUT
         rv = _run_remote_shell_cmd (ssh, command)
+
+    # Giving the counters a chance to update. 
+    # Probably some periodic thread in DUT that updates counters for SNMP
+    for i in range(30) :
+        import time
+        logging.info(f"Waiting {i} seconds out of 30")
+        time.sleep(1)
+
+    acl_in_counter_curr = snmp_comm.acl_in_rule_r1_counter(int(port) - 1)
+    logging.info(f"Prev acl in counter: {acl_in_counter_prev}\nCurr acl in counter: {acl_in_counter_curr}")
 
     if rv == 0:
         logging.info("Test 1 finished successfully")
@@ -110,15 +131,14 @@ if __name__ == "__main__" :
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    HOST        = constants['COMM']['HOST']
-    PORT        = int(constants['COMM']['TCP_PORT'])
+    HOST        = constants['COMM']['HOST_ONL']
     WORKDIR     = constants['DUT_ENV']['WORKDIR']
     LOG_FILE    = constants['DUT_ENV']['LOG_FILE']
 
     COPY_FILE_LIST = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
     # Create test environment on DUT 
-    create_directory_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
+    create_workdir_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
 
     # Run operation
     activate_dut_test_1(HOST, WORKDIR)
