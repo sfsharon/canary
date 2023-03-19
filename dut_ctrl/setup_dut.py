@@ -63,7 +63,7 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 
     return exit_status
 
-def _create_workdir_and_copy_files (host, workdir, copy_file_list):
+def create_workdir_and_copy_files (host, workdir, copy_file_list):
     """
     Move testing files into workdir in DUT.
     If workdir already exists, first delete it completly.
@@ -158,7 +158,7 @@ if __name__ == "__main__" :
     COPY_FILE_LIST = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
     # Create test environment on DUT 
-    _create_workdir_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
+    create_workdir_and_copy_files(HOST, WORKDIR, COPY_FILE_LIST)
 
     # Run operation
     activate_dut_test_1(HOST, WORKDIR)
