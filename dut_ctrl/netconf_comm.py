@@ -477,7 +477,7 @@ def strip(node):
 # ***************************************************************************************
 # Canary Helper functions
 # ***************************************************************************************
-def get_config_by_xpath(connection, xml_path_list) :
+def _get_config_by_xpath(connection, xml_path_list) :
     """
     Input : connection  - Netconf connection object 
             xml_path_list - String list of XML path.
@@ -495,10 +495,8 @@ def get_config_by_xpath(connection, xml_path_list) :
     dut_reply = connection.recv_msg()
     return dut_reply
 
-# ***************************************************************************************
-# Canary Commands functions
-# ***************************************************************************************
-XML_REQ = """<?xml version="1.0" encoding="UTF-8"?>
+
+XML_REQ_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
             <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
                 <edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>
                     <target><{db}/></target>
@@ -509,6 +507,47 @@ XML_REQ = """<?xml version="1.0" encoding="UTF-8"?>
             </rpc>
             """
 
+ACL_IN_XML_CMD = """<interface xmlns="http://compass-eos.com/ns/compass_yang">
+                        <x-eth>
+                            <instance>{x_eth_interface}</instance>
+                            <policy>
+                                    <acl>
+                                    <in {operation}>{acl_in_policy_name}</in>
+                                </acl>
+                            </policy>
+                        </x-eth>
+                    </interface>"""
+
+def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instance_path, attribute_path) :
+    """
+    Input : dut_conn - DUT Connection
+            instance_tag_name   - For example, "x-eth"
+            instance_value      - For example, "0/0/1" for x-eth 0/0/1
+            instance_path       - For example,  ["interface"]
+            attribute_path      - For example,  ["policy", "acl", "in"]
+    Return value : Attribute of an instance if exists, None otherwise
+    """
+    import parse_xml
+    instance_path.append(instance_tag_name)
+
+    logging.info(f"Get attribute {attribute_path} for instance {instance_path}")
+    attr_val = None 
+
+    conf_xml_subtree = _get_config_by_xpath(dut_conn, instance_path)
+    if conf_xml_subtree is not None:        
+        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, instance_tag_name, instance_value)
+        attr_val = parse_xml.get_instance_text_attribute (instance_node, attribute_path)
+        if attr_val != None :
+            logging.info(f"Received attribute value: {attr_val}")
+        else :
+            logging.info("No attribute value found")
+    
+    return attr_val
+
+# ***************************************************************************************
+# Canary Commands functions
+# ***************************************************************************************
+
 def cmd_configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     import parse_xml
 
@@ -518,22 +557,19 @@ def cmd_configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
 
     logging.info(f"Setting policy acl in {acl_in_policy_name} for interface x-eth {x_eth_interface}")
 
-    xml_command = f"""
-    <interface xmlns="http://compass-eos.com/ns/compass_yang">
-        <x-eth>
-            <instance>{x_eth_interface}</instance>
-            <policy>
-                    <acl>
-                    <in>{acl_in_policy_name}</in>
-                </acl>
-            </policy>
-        </x-eth>
-    </interface>
-    """
-    
-    dut_conn.send_msg(XML_REQ.format(db = db, xml_command = xml_command))
+    xml_command = ACL_IN_XML_CMD.format(x_eth_interface     = x_eth_interface, 
+                                        operation           = "",                            # No operation
+                                        acl_in_policy_name  = acl_in_policy_name)
+
+    logging.info(f"cmd_configure_acl_in xml_command :\n{xml_command}")
+
+    dut_conn.send_msg(XML_REQ_TEMPLATE.format(db = db, xml_command = xml_command))
     xml_resp = dut_conn.recv_msg()
-    print(xml_resp)
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull in sending xml command.")
+    else :
+        raise Exception("Failed in sending xml command !")
 
     logging.info("Sending commit")
     xml_req = commit_msg()
@@ -541,9 +577,9 @@ def cmd_configure_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     xml_resp = dut_conn.recv_msg()
     return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
     if return_val != None :
-        logging.info ("Successfull.")
+        logging.info ("Successfull in sending commit.")
     else :
-        logging.info ("Failed !")    
+        raise Exception("Failed in sending commit !")
 
 def cmd_delete_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     import parse_xml
@@ -554,20 +590,11 @@ def cmd_delete_acl_in(dut_conn, x_eth_interface, acl_in_policy_name):
     
     logging.info(f"Deleting policy acl in {acl_in_policy_name} for interface x-eth {x_eth_interface}")
 
-    xml_command = f"""
-    <interface xmlns="http://compass-eos.com/ns/compass_yang">
-        <x-eth>
-            <instance>{x_eth_interface}</instance>
-            <policy>
-                    <acl>
-                    <in operation="delete">{acl_in_policy_name}</in>
-                </acl>
-            </policy>
-        </x-eth>
-    </interface>
-    """
+    xml_command = ACL_IN_XML_CMD.format(x_eth_interface     = x_eth_interface, 
+                                        operation           = "operation=\"delete\"", 
+                                        acl_in_policy_name  = acl_in_policy_name)
 
-    dut_conn.send_msg(XML_REQ.format(db = db, xml_command = xml_command))
+    dut_conn.send_msg(XML_REQ_TEMPLATE.format(db = db, xml_command = xml_command))
     xml_resp = dut_conn.recv_msg()
     print(xml_resp)
 
@@ -588,31 +615,6 @@ def cmd_hello(dut_conn):
     dut_conn.send_msg(hello_msg(versions))
     hello_reply = dut_conn.recv_msg()
 
-def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instance_path, attribute_path) :
-    """
-    Input : dut_conn - DUT Connection
-            instance_tag_name   - For example, "x-eth"
-            instance_value      - For example, "0/0/1" for x-eth 0/0/1
-            instance_path       - For example,  ["interface"]
-            attribute_path      - For example,  ["policy", "acl", "in"]
-    Return value : Attribute of an instance if exists, None otherwise
-    """
-    import parse_xml
-    instance_path.append(instance_tag_name)
-
-    logging.info(f"Get attribute {attribute_path} for instance {instance_path}")
-    attr_val = None 
-
-    conf_xml_subtree = get_config_by_xpath(dut_conn, instance_path)
-    if conf_xml_subtree is not None:        
-        instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, instance_tag_name, instance_value)
-        attr_val = parse_xml.get_instance_text_attribute (instance_node, attribute_path)
-        if attr_val != None :
-            logging.info(f"Received attribute value: {attr_val}")
-        else :
-            logging.info("No attribute value found")
-    
-    return attr_val
 
 def cmd_get_policy_acl_in_name(dut_conn, interface) :
     """Get acl in policy of interface
@@ -629,8 +631,6 @@ def cmd_get_policy_acl_in_name(dut_conn, interface) :
 
     logging.info("Get policy acl in name for interface x-eth " + interface)
     policy_name = _get_instance_attribute(dut_conn, X_ETH_TAG_NAME, interface, X_ETH_XML_PATH, ACL_IN_PATH_LIST) 
-
-
     
     return policy_name
 
@@ -638,10 +638,16 @@ def my_main() :
     """
     My Main - ACL test case example
     """
+    import configparser
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    HOST_NAME       = constants['COMM']['HOST_CPM']
+    NETCONF_PORT    = int(constants['NETCONF']['PORT'])
+
     X_ETH_VALUE             = "0/0/1"
     NEW_POLICY_ACL_IN_NAME  = "pol_ipv4"
-    HOST_NAME               = "10.3.10.1"
-    NETCONF_PORT            = 2022
     CPM_USER                = "admin"
     CPM_PASSWORD            = "admin"
 
@@ -656,13 +662,12 @@ def my_main() :
     # Get acl in policy name of X_ETH_VALUE
     acl_in_policy_name = cmd_get_policy_acl_in_name(dut_conn, X_ETH_VALUE)
 
-    # Disable rest of the script for debug purposes
-    # if acl_in_policy_name == None :
-    #     # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
-    #     cmd_configure_acl_in(dut_conn, X_ETH_VALUE, NEW_POLICY_ACL_IN_NAME)
-    # else :
-    #     # Found acl in policy name on X_ETH_NAME. Delete it
-    #     cmd_delete_acl_in(dut_conn, X_ETH_VALUE, acl_in_policy_name)
+    if acl_in_policy_name == None :
+        # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
+        cmd_configure_acl_in(dut_conn, X_ETH_VALUE, NEW_POLICY_ACL_IN_NAME)
+    else :
+        # Found acl in policy name on X_ETH_NAME. Delete it
+        cmd_delete_acl_in(dut_conn, X_ETH_VALUE, acl_in_policy_name)
 
 if __name__ == "__main__" :
     my_main()
