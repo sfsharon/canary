@@ -603,15 +603,12 @@ def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instanc
     logging.info(f"Get attribute {attribute_path} for instance {instance_path}")
     attr_val = None 
 
-    logging.critical(f"Debug : instance_tag_name : {instance_tag_name}, type : {type(instance_tag_name)}")
-    logging.critical(f"Debug : instance_path : {instance_path}, type : {type(instance_path)}")
-
     conf_xml_subtree = get_config_by_xpath(dut_conn, instance_path)
     if conf_xml_subtree is not None:        
         instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, instance_tag_name, instance_value)
         attr_val = parse_xml.get_instance_text_attribute (instance_node, attribute_path)
         if attr_val != None :
-            logging.info(f"Received attribute value {attr_val}")
+            logging.info(f"Received attribute value: {attr_val}")
         else :
             logging.info("No attribute value found")
     
