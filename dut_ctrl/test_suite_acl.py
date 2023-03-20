@@ -88,9 +88,7 @@ def setup_dut(ssh_client):
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    # host        = constants['COMM']['HOST_ONL']
     workdir     = constants['DUT_ENV']['WORKDIR']
-    # log_file    = constants['DUT_ENV']['LOG_FILE']
 
     copy_file_list = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
@@ -158,4 +156,5 @@ def test_TC01_acl_in(ssh_client, setup_dut) :
     assert  ((acl_in_counter_curr - acl_in_counter_prev) == num_of_tx), \
              f"Test 1 failed: Prev acl in counter: {acl_in_counter_prev}, Curr acl in counter: {acl_in_counter_curr}"
 
-    
+def test_TC02(setup_logging):
+    logging.info("Place holder for ctrl-plane ACL test")
