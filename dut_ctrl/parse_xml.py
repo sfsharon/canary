@@ -165,10 +165,50 @@ def get_instance_text_attribute (instance_node, xml_path_list) :
     
     return attr
 
+def get_text_attribute (xml_tree, unique_tag_name) :
+    """
+    Same as get_instance_text_attribute, but without an instance.
+    Input : xml_tree - XML string 
+            For example, finding the attribute value of ctrl-plane egress :
+            <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                <data>
+                    <ctrl-plane xmlns="http://compass-eos.com/ns/compass_yang">
+                        <policy>
+                            <acl>
+                                <egress>my</egress>
+                            </acl>
+                        </policy>
+                    </ctrl-plane>
+                </data>
+            </rpc-reply>
+    Return value : String with the required attrbiute, None othewise.
+    """
+    dom = xml.dom.minidom.parseString(xml_tree)
+    curr_node = _get_unique_node(dom, unique_tag_name)
+    if curr_node != None :
+        attr = _get_node_text_value(curr_node)
+    else :
+        raise Exception (f"Cannot find tag name: {unique_tag_name}")
+    return attr
+
 # ===================================
 # UT
 # ===================================
 if __name__ == "__main__" :
+
+    xml_conf_ctrl_plane_resp = """<?xml version="1.0" encoding="UTF-8"?>
+    <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+        <data>
+            <ctrl-plane xmlns="http://compass-eos.com/ns/compass_yang">
+                <policy>
+                    <acl>
+                        <egress>my</egress>
+                    </acl>
+                </policy>
+            </ctrl-plane>
+        </data>
+    </rpc-reply>
+    """
 
     xml_conf_resp = """<?xml version="1.0" ?>
     <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
@@ -226,9 +266,12 @@ if __name__ == "__main__" :
     # Get policy acl name from XML configuration
     instance_node = get_instance_by_string(xml_conf_resp, "x-eth", "0/0/1")
     acl_in_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
-    print (acl_in_policy_name)
+    logging.info (acl_in_policy_name)
     
     # Get response (ok / error) from DUT xml
     instance_node = get_instance_by_tag(xml_command_resp, "rpc-reply", "ok") 
     
-    print("finish")
+    # Getting acl ctrl-plane egress
+    ctrl_plane_val = get_text_attribute(xml_conf_ctrl_plane_resp, 'egress')
+
+    logging.info("finish")

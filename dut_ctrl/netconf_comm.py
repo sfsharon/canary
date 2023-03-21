@@ -489,8 +489,7 @@ XML_REQ_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
                         {xml_command}
                     </config>
                 </edit-config>
-            </rpc>
-            """
+            </rpc>"""
 
 ACL_IN_XML_CMD = """<interface xmlns="http://compass-eos.com/ns/compass_yang">
                         <x-eth>
@@ -502,6 +501,14 @@ ACL_IN_XML_CMD = """<interface xmlns="http://compass-eos.com/ns/compass_yang">
                             </policy>
                         </x-eth>
                     </interface>"""
+
+ACL_CTRL_PLANE_XML_CMD ="""<ctrl-plane xmlns="http://compass-eos.com/ns/compass_yang">
+                                <policy>
+                                    <acl>
+                                        <{acl_ctrl_plane_type} {operation}>{attribute_value}</{acl_ctrl_plane_type}>
+                                    </acl>
+                                </policy>
+                            </ctrl-plane>"""
 
 # ***************************************************************************************
 # Canary Helper functions
@@ -524,8 +531,32 @@ def _get_config_by_xpath(connection, xml_path_list) :
     dut_reply = connection.recv_msg()
     return dut_reply
 
+def _get_attribute(dut_conn, attribute_path, unique_tag_name) :
+    """
+    Get attribute of an XML path
+    Input : dut_conn - DUT Connection            
+            attribute_path      - For example,  ["ctrl-plane", "policy", "acl"]
+            unique_tag_name     - For example,  "egress"
+    Return value : Value of unique_tag_name, according to the attribute path
+    """
+    import parse_xml
+
+    logging.info(f"Get attribute: {attribute_path}, unique_tag_name: {unique_tag_name}")
+    attr_val = None 
+
+    conf_xml_subtree = _get_config_by_xpath(dut_conn, attribute_path)
+    attr_val = parse_xml.get_text_attribute (conf_xml_subtree, unique_tag_name)
+    if attr_val != None :
+        logging.info(f"Received attribute value: {attr_val}")
+    else :
+        logging.info("No attribute value found")
+    
+    return attr_val
+
+
 def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instance_path, attribute_path) :
     """
+    Get attribute of an XML PATH, which fits several instances - Choose the specific instance needed, such as x-eth 0/0/23 for example.
     Input : dut_conn - DUT Connection
             instance_tag_name   - For example, "x-eth"
             instance_value      - For example, "0/0/1" for x-eth 0/0/1
@@ -534,12 +565,14 @@ def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instanc
     Return value : Attribute of an instance if exists, None otherwise
     """
     import parse_xml
+
     instance_path.append(instance_tag_name)
 
     logging.info(f"Get attribute {attribute_path} for instance {instance_path}")
     attr_val = None 
 
     conf_xml_subtree = _get_config_by_xpath(dut_conn, instance_path)
+
     if conf_xml_subtree is not None:        
         instance_node = parse_xml.get_instance_by_string(conf_xml_subtree, instance_tag_name, instance_value)
         attr_val = parse_xml.get_instance_text_attribute (instance_node, attribute_path)
@@ -547,6 +580,8 @@ def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instanc
             logging.info(f"Received attribute value: {attr_val}")
         else :
             logging.info("No attribute value found")
+    else :
+        raise Exception (f"No configuration for {instance_path}")
     
     return attr_val
 
@@ -561,6 +596,36 @@ def cmd_x_eth_configure(dut_conn, x_eth_interface, attribute_value, xml_cmd_temp
     xml_command = xml_cmd_template.format(x_eth_interface   = x_eth_interface, 
                                           operation         = operation,
                                           attribute_value   = attribute_value)
+
+    logging.info(f"cmd_configure_acl_in xml_command :\n{xml_command}")
+
+    dut_conn.send_msg(XML_REQ_TEMPLATE.format(xml_command = xml_command))
+    xml_resp = dut_conn.recv_msg()
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull in sending xml command.")
+    else :
+        raise Exception("Failed in sending xml command !")
+
+    logging.info("Sending commit")
+    xml_req = commit_msg()
+    dut_conn.send_msg(xml_req)
+    xml_resp = dut_conn.recv_msg()
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull in sending commit.")
+    else :
+        raise Exception("Failed in sending commit !")
+
+def cmd_ctrl_plane_acl_configure(dut_conn, xml_cmd_template, acl_ctrl_plane_type, operation, attribute_value):
+
+    import parse_xml
+
+    logging.info(f"operation: {operation} for {attribute_value} for ctrl-plane {acl_ctrl_plane_type}")
+
+    xml_command = xml_cmd_template.format(acl_ctrl_plane_type   = acl_ctrl_plane_type, 
+                                          operation             = operation,
+                                          attribute_value       = attribute_value)
 
     logging.info(f"cmd_configure_acl_in xml_command :\n{xml_command}")
 
@@ -630,6 +695,18 @@ def my_main() :
     # Perform get hello from DUT first.
     cmd_hello(dut_conn)
 
+
+    # ctrl-plane acl
+    # ------------------------
+    ctrl_plane_egress = _get_attribute(dut_conn, ["ctrl-plane", "policy", "acl"], "egress") 
+    logging.info(f"ctrl_plane_egress: {ctrl_plane_egress}")
+
+    ctrl_plane_nni_ingress = _get_attribute(dut_conn, ["ctrl-plane", "policy", "acl"], "nni_ingress") 
+    logging.info(f"ctrl_plane_nni_ingress: {ctrl_plane_nni_ingress}")
+    sys.exit(0)
+
+    # x-eth acl rule
+    # ------------------------
     # Get acl in policy name of X_ETH_VALUE
     acl_in_policy_name = cmd_get_policy_acl_in_name(dut_conn, X_ETH_VALUE)
 
