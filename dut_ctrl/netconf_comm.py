@@ -585,67 +585,56 @@ def _get_instance_attribute(dut_conn, instance_tag_name, instance_value, instanc
     
     return attr_val
 
+
+def _configure_and_commit(dut_conn, xml_command): 
+    """
+    Configure DUT the xml_command, and immediatelly commit afterwards
+    Input : dut_conn - DUT Connection
+            xml_command - Command to commit
+    Return Value : None. Throws Exceptino if fails.
+    """
+    import parse_xml
+
+    logging.info(f"Configure xml_command :\n{xml_command}")
+
+    dut_conn.send_msg(XML_REQ_TEMPLATE.format(xml_command = xml_command))
+    xml_resp = dut_conn.recv_msg()
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull in sending xml command.")
+    else :
+        raise Exception("Failed in sending xml command !")
+
+    logging.info("Sending commit")
+    xml_req = commit_msg()
+    dut_conn.send_msg(xml_req)
+    xml_resp = dut_conn.recv_msg()
+    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
+    if return_val != None :
+        logging.info ("Successfull in sending commit.")
+    else :
+        raise Exception("Failed in sending commit !")
+
 # ***************************************************************************************
 # Commands functions
 # ***************************************************************************************
 def cmd_x_eth_configure(dut_conn, x_eth_interface, attribute_value, xml_cmd_template, operation):
-    import parse_xml
-
-    logging.info(f"operation: {operation} for {attribute_value} for interface x-eth {x_eth_interface}")
-
+    """
+    Configure x-eth 0/0/x_eth_interface attribute
+    """
     xml_command = xml_cmd_template.format(x_eth_interface   = x_eth_interface, 
                                           operation         = operation,
                                           attribute_value   = attribute_value)
+    _configure_and_commit(dut_conn, xml_command)
 
-    logging.info(f"cmd_configure_acl_in xml_command :\n{xml_command}")
-
-    dut_conn.send_msg(XML_REQ_TEMPLATE.format(xml_command = xml_command))
-    xml_resp = dut_conn.recv_msg()
-    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
-    if return_val != None :
-        logging.info ("Successfull in sending xml command.")
-    else :
-        raise Exception("Failed in sending xml command !")
-
-    logging.info("Sending commit")
-    xml_req = commit_msg()
-    dut_conn.send_msg(xml_req)
-    xml_resp = dut_conn.recv_msg()
-    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
-    if return_val != None :
-        logging.info ("Successfull in sending commit.")
-    else :
-        raise Exception("Failed in sending commit !")
-
-def cmd_ctrl_plane_acl_configure(dut_conn, xml_cmd_template, acl_ctrl_plane_type, operation, attribute_value):
-
-    import parse_xml
-
-    logging.info(f"operation: {operation} for {attribute_value} for ctrl-plane {acl_ctrl_plane_type}")
-
-    xml_command = xml_cmd_template.format(acl_ctrl_plane_type   = acl_ctrl_plane_type, 
-                                          operation             = operation,
-                                          attribute_value       = attribute_value)
-
-    logging.info(f"cmd_configure_acl_in xml_command :\n{xml_command}")
-
-    dut_conn.send_msg(XML_REQ_TEMPLATE.format(xml_command = xml_command))
-    xml_resp = dut_conn.recv_msg()
-    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
-    if return_val != None :
-        logging.info ("Successfull in sending xml command.")
-    else :
-        raise Exception("Failed in sending xml command !")
-
-    logging.info("Sending commit")
-    xml_req = commit_msg()
-    dut_conn.send_msg(xml_req)
-    xml_resp = dut_conn.recv_msg()
-    return_val = parse_xml.get_instance_by_tag(xml_resp, RPC_REPLY_TAG_NAME, OK_TAG_NAME)
-    if return_val != None :
-        logging.info ("Successfull in sending commit.")
-    else :
-        raise Exception("Failed in sending commit !")
+def cmd_ctrl_plane_acl_configure(dut_conn, acl_ctrl_plane_type, operation, attribute_value):
+    """
+    Configure acl control plane attribute
+    """
+    xml_command = ACL_CTRL_PLANE_XML_CMD.format(acl_ctrl_plane_type   = acl_ctrl_plane_type, 
+                                                operation             = operation,
+                                                attribute_value       = attribute_value)
+    _configure_and_commit(dut_conn, xml_command)
 
 def cmd_hello(dut_conn):
     """Perform get hello from DUT first"""
@@ -684,7 +673,9 @@ def cmd_get_ctrl_plane_acl_name(dut_conn, ctrl_plane_acl_type) :
 
     return ctrl_plane_acl_name
 
-
+# ***************************************************************************************
+# UT
+# ***************************************************************************************
 def my_main() :
     """
     My Main - ACL test case example
@@ -697,8 +688,7 @@ def my_main() :
     HOST_NAME       = constants['COMM']['HOST_CPM']
     NETCONF_PORT    = int(constants['NETCONF']['PORT'])
 
-    X_ETH_VALUE             = "0/0/1"
-    NEW_POLICY_ACL_IN_NAME  = "pol_ipv4"
+    NEW_ACL_POLICY_ACL_NAME  = "pol_ipv4"
     CPM_USER                = "admin"
     CPM_PASSWORD            = "admin"
 
@@ -709,27 +699,30 @@ def my_main() :
     # Perform get hello from DUT first.
     cmd_hello(dut_conn)
 
-
-    # ctrl-plane acl
-    # ------------------------
-    ctrl_plane_egress = cmd_get_ctrl_plane_acl_name(dut_conn, "egress")
-    logging.info(f"ctrl_plane_egress: {ctrl_plane_egress}")
-
-    ctrl_plane_nni_ingress = cmd_get_ctrl_plane_acl_name(dut_conn, "nni_ingress")
-    logging.info(f"ctrl_plane_nni_ingress: {ctrl_plane_nni_ingress}")
-    sys.exit(0)
-
     # x-eth acl rule
     # ------------------------
+    X_ETH_VALUE             = "0/0/1"
     # Get acl in policy name of X_ETH_VALUE
     acl_in_policy_name = cmd_get_policy_acl_in_name(dut_conn, X_ETH_VALUE)
 
     if acl_in_policy_name == None :
         # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
-        cmd_x_eth_configure(dut_conn, X_ETH_VALUE, NEW_POLICY_ACL_IN_NAME, ACL_IN_XML_CMD, operation="")
+        cmd_x_eth_configure(dut_conn, X_ETH_VALUE, NEW_ACL_POLICY_ACL_NAME, ACL_IN_XML_CMD, operation="")
     else :
         # Found acl in policy name on X_ETH_NAME. Delete it
         cmd_x_eth_configure(dut_conn, X_ETH_VALUE, acl_in_policy_name, ACL_IN_XML_CMD, operation="operation=\"delete\"")
+
+    # ctrl-plane acl
+    # ------------------------
+    ctrl_plane_nni_ingress = cmd_get_ctrl_plane_acl_name(dut_conn, "nni_ingress")
+    logging.info(f"ctrl_plane_nni_ingress: {ctrl_plane_nni_ingress}")
+
+    if ctrl_plane_nni_ingress == None :
+        # Did not find an acl control plane nni_ingress. Configure a new one. 
+        cmd_ctrl_plane_acl_configure(dut_conn=dut_conn, acl_ctrl_plane_type="nni_ingress", attribute_value=NEW_ACL_POLICY_ACL_NAME, operation="")
+    else :
+        # Found an acl control plane nni_ingress. Delete it. 
+        cmd_ctrl_plane_acl_configure(dut_conn=dut_conn, acl_ctrl_plane_type="nni_ingress", attribute_value=ctrl_plane_nni_ingress, operation="operation=\"delete\"")
 
 if __name__ == "__main__" :
     my_main()
