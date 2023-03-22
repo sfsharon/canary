@@ -671,6 +671,20 @@ def cmd_get_policy_acl_in_name(dut_conn, interface) :
     
     return policy_name
 
+def cmd_get_ctrl_plane_acl_name(dut_conn, ctrl_plane_acl_type) :
+    """Get acl in policy of interface
+    Input : dut_conn  - DUT connection
+            interface - String that holds control plane type. Values can be "egress" or "nni_ingress" 
+    Return value : Ctrl-plane ACL name
+    """
+    CTRL_PLANE_ACL_PATH_LIST   = ["ctrl-plane", "policy", "acl"]
+
+    ctrl_plane_acl_name = _get_attribute(dut_conn, CTRL_PLANE_ACL_PATH_LIST, ctrl_plane_acl_type) 
+    logging.info(f"Control plane acl type {ctrl_plane_acl_type}: {ctrl_plane_acl_name}")
+
+    return ctrl_plane_acl_name
+
+
 def my_main() :
     """
     My Main - ACL test case example
@@ -698,10 +712,10 @@ def my_main() :
 
     # ctrl-plane acl
     # ------------------------
-    ctrl_plane_egress = _get_attribute(dut_conn, ["ctrl-plane", "policy", "acl"], "egress") 
+    ctrl_plane_egress = cmd_get_ctrl_plane_acl_name(dut_conn, "egress")
     logging.info(f"ctrl_plane_egress: {ctrl_plane_egress}")
 
-    ctrl_plane_nni_ingress = _get_attribute(dut_conn, ["ctrl-plane", "policy", "acl"], "nni_ingress") 
+    ctrl_plane_nni_ingress = cmd_get_ctrl_plane_acl_name(dut_conn, "nni_ingress")
     logging.info(f"ctrl_plane_nni_ingress: {ctrl_plane_nni_ingress}")
     sys.exit(0)
 

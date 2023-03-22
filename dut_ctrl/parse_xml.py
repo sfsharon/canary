@@ -183,12 +183,13 @@ def get_text_attribute (xml_tree, unique_tag_name) :
             </rpc-reply>
     Return value : String with the required attrbiute, None othewise.
     """
+    attr = None 
+
     dom = xml.dom.minidom.parseString(xml_tree)
     curr_node = _get_unique_node(dom, unique_tag_name)
     if curr_node != None :
         attr = _get_node_text_value(curr_node)
-    else :
-        raise Exception (f"Cannot find tag name: {unique_tag_name}")
+    
     return attr
 
 # ===================================
