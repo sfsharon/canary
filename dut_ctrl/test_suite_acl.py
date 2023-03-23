@@ -148,9 +148,14 @@ def test_TC00_Setup_Environment(netconf_client):
 
     logging.info("test_TC00_Setup_Environment")
 
-    # Remove Policy if present, and configure new one 
-    netconf_comm.cmd_set_policy_deny_src_ip(netconf_client, '1.2.3.4', operation = "operation=\"delete\"")
-    netconf_comm.cmd_set_policy_deny_src_ip(netconf_client, '1.2.3.4', operation = "")
+   # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    phys_port_ip = constants['TEST_SUITE_ACL']['SRC_IP']
+ 
+    # Remove Policy if exists, and then configure a new one 
+    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, phys_port_ip, operation = "operation=\"delete\"")
+    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, phys_port_ip, operation = "")
     assert 1==1
 
 
@@ -169,6 +174,8 @@ def test_TC01_acl_in(ssh_client) :
         4. Read ACL counter value, and assert that it incremented the value of packets injected 
            (Using SNMP)
     """
+    import packet_creator
+
     logging.info("test_TC01_acl_in")
     
     # Read globals from ini file
@@ -176,17 +183,27 @@ def test_TC01_acl_in(ssh_client) :
     constants.read('config.ini')
     workdir                  = constants['DUT_ENV']['WORKDIR']
     snmp_counter_update_time = int(constants['SNMP']['COUNTER_UPDATE_TIME'])
+    phys_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP']
+    dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
 
     # Test parameters
-    port = '24' # Value 24 referes to port x-eth 0/0/23
+    bcm_port_num = str(phys_port_num + 1) # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
     num_of_tx = '3'
-    frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
+    
+    # Generate the String hex representation of the frame, needed for transmission into the SDK :
+    frame = packet_creator.create_frame(src_ip = '1.2.3.4', dst_ip = '5.5.5.5')
+    # frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
+    # frame translates to :
+    # >>> Ether(frame_byte)
+    # <Ether  dst=1e:94:a0:04:17:1a src=00:15:5d:69:29:ba type=IPv4 |
+    # <IP  version=4 ihl=5 tos=0x0 len=20 id=1 flags= frag=0 ttl=64 proto=hopopt chksum=0x66b7 src=10.24.0.2 dst=10.24.0.1 |>>
 
     # Read ACL counter value, and save it
-    acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(int(port) - 1))
+    acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
     
     # Run remote command in DUT
-    command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {port}"
+    command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
     rv = _run_remote_shell_cmd (ssh_client, command)
 
     if rv != 0 :
@@ -202,7 +219,7 @@ def test_TC01_acl_in(ssh_client) :
 
     # Verify counters incremented correctly
     num_of_tx = int(num_of_tx)
-    acl_in_counter_curr = int(snmp_comm.acl_in_rule_r1_counter(int(port) - 1))
+    acl_in_counter_curr = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
 
     assert  ((acl_in_counter_curr - acl_in_counter_prev) == num_of_tx), \
              f"Test 1 failed: Prev acl in counter: {acl_in_counter_prev}, Curr acl in counter: {acl_in_counter_curr}"

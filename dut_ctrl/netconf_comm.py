@@ -717,7 +717,7 @@ def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_v
                                                 attribute_value       = attribute_value)
     _configure_and_commit(dut_conn, xml_command)
 
-def cmd_set_policy_deny_src_ip (dut_conn, src_ip_to_deny, operation) :
+def cmd_set_acl_policy__deny_src_ip (dut_conn, src_ip_to_deny, operation) :
     """
     Configure acl policy for denying a certain source IP
     """
@@ -753,8 +753,8 @@ def my_main() :
 
     # Policy 
     # -------------------------
-    # cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "")
-    cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "operation=\"delete\"")
+    # cmd_set_acl_policy__deny_src_ip(dut_conn, '1.2.3.4', operation = "")
+    cmd_set_acl_policy__deny_src_ip(dut_conn, '1.2.3.4', operation = "operation=\"delete\"")
     sys.exit(0)
 
     # x-eth acl rule
