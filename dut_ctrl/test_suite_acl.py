@@ -148,15 +148,32 @@ def test_TC00_Setup_Environment(netconf_client):
 
     logging.info("test_TC00_Setup_Environment")
 
-   # Read globals from ini file
+    # Read globals from ini file
+    # ----------------------------------------------------------
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    phys_port_ip = constants['TEST_SUITE_ACL']['SRC_IP']
- 
-    # Remove Policy if exists, and then configure a new one 
-    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, phys_port_ip, operation = "operation=\"delete\"")
-    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, phys_port_ip, operation = "")
-    assert 1==1
+    physical_port_ip    = constants['TEST_SUITE_ACL']['SRC_IP']
+    physical_port_num   = constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM']
+    ACL_IN_POLICY_NAME  = constants['TEST_SUITE_ACL']['ACL_IN_POLICY_NAME']
+
+    # Create acl policy ACL_IN_POLICY_NAME
+    # ----------------------------------------------------------    
+    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, ACL_IN_POLICY_NAME, physical_port_ip, operation = "operation=\"delete\"")
+    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, ACL_IN_POLICY_NAME, physical_port_ip, operation = "")
+
+    # Delete acl in policy in interface X_ETH_VALUE if exists, and attach ACL_IN_POLICY_NAME
+    # --------------------------------------------------------------------------------------------    
+    X_ETH_VALUE        = "0/0/" + physical_port_num 
+    acl_in_policy_name = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, X_ETH_VALUE)
+
+    if acl_in_policy_name != None :
+        logging.info(f"Found policy {acl_in_policy_name} on port {X_ETH_VALUE}. Deleting it")
+        netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, acl_in_policy_name, operation="operation=\"delete\"")
+    
+    logging.info(f"Attach acl in policy {ACL_IN_POLICY_NAME} to interface {X_ETH_VALUE}")
+    netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, ACL_IN_POLICY_NAME, operation="")
+
+    assert True
 
 
 # ***************************************************************************************

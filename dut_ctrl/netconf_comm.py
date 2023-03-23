@@ -510,7 +510,7 @@ ACL_CTRL_PLANE_XML_CMD ="""<ctrl-plane xmlns="http://compass-eos.com/ns/compass_
 
 ACL_POLICY_DENY_SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">
     <acl {operation}>
-        <name>canary_pol_deny_src_ip</name>
+        <name>{policy_name}</name>
         <rule>
             <name>r1</name>
             <conditional>
@@ -643,7 +643,6 @@ def _configure_and_commit(dut_conn, xml_command):
     else :
         raise Exception("Failed in sending xml command !")
 
-    logging.info("Sending commit")
     xml_req = commit_msg()
     dut_conn.send_msg(xml_req)
     xml_resp = dut_conn.recv_msg()
@@ -699,13 +698,15 @@ def cmd_get_acl_policy(dut_conn) :
 # ***************************************************************************************
 # SET Commands functions
 # ***************************************************************************************
-def cmd_set_x_eth(dut_conn, x_eth_interface, attribute_value, xml_cmd_template, operation):
+def cmd_set_attach_policy_acl_in_x_eth(dut_conn, x_eth_interface, attribute_value, operation):
     """
     Configure x-eth 0/0/x_eth_interface attribute
     """
+    xml_cmd_template = ACL_IN_XML_CMD
     xml_command = xml_cmd_template.format(x_eth_interface   = x_eth_interface, 
                                           operation         = operation,
                                           attribute_value   = attribute_value)
+    logging.info(f"x_eth_interface: {x_eth_interface}, operation: {operation}, attribute_value: {attribute_value}")
     _configure_and_commit(dut_conn, xml_command)
 
 def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_value):
@@ -715,14 +716,17 @@ def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_v
     xml_command = ACL_CTRL_PLANE_XML_CMD.format(acl_ctrl_plane_type   = acl_ctrl_plane_type, 
                                                 operation             = operation,
                                                 attribute_value       = attribute_value)
+    logging.info(f"acl_ctrl_plane_type: {acl_ctrl_plane_type}, operation: {operation}, attribute_value: {attribute_value}")
     _configure_and_commit(dut_conn, xml_command)
 
-def cmd_set_acl_policy__deny_src_ip (dut_conn, src_ip_to_deny, operation) :
+def cmd_set_acl_policy__deny_src_ip (dut_conn, policy_name, src_ip_to_deny, operation) :
     """
     Configure acl policy for denying a certain source IP
     """
-    xml_command = ACL_POLICY_DENY_SRC_IP_XML_CMD.format(operation      = operation,
+    xml_command = ACL_POLICY_DENY_SRC_IP_XML_CMD.format(policy_name    = policy_name,
+                                                        operation      = operation,
                                                         src_ip_to_deny = src_ip_to_deny)
+    logging.info(f"policy_name: {policy_name}, operation: {operation}, src_ip_to_deny: {src_ip_to_deny}")
     _configure_and_commit(dut_conn, xml_command)
 
 # ***************************************************************************************
@@ -739,6 +743,7 @@ def my_main() :
     constants.read('config.ini')
     HOST_NAME       = constants['COMM']['HOST_CPM']
     NETCONF_PORT    = int(constants['NETCONF']['PORT'])
+    ACL_IN_POLICY_NAME = constants['TEST_SUITE_ACL']['ACL_IN_POLICY_NAME']
 
     NEW_ACL_POLICY_ACL_NAME  = "pol_ipv4"
     CPM_USER                = "admin"
@@ -753,8 +758,8 @@ def my_main() :
 
     # Policy 
     # -------------------------
-    # cmd_set_acl_policy__deny_src_ip(dut_conn, '1.2.3.4', operation = "")
-    cmd_set_acl_policy__deny_src_ip(dut_conn, '1.2.3.4', operation = "operation=\"delete\"")
+    # cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_IN_POLICY_NAME, '1.2.3.4', operation = "")
+    cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_IN_POLICY_NAME, '1.2.3.4', operation = "operation=\"delete\"")
     sys.exit(0)
 
     # x-eth acl rule
@@ -765,10 +770,10 @@ def my_main() :
 
     if acl_in_policy_name == None :
         # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
-        cmd_set_x_eth(dut_conn, X_ETH_VALUE, NEW_ACL_POLICY_ACL_NAME, ACL_IN_XML_CMD, operation="")
+        cmd_set_attach_policy_acl_in_x_eth(dut_conn, X_ETH_VALUE, NEW_ACL_POLICY_ACL_NAME, operation="")
     else :
         # Found acl in policy name on X_ETH_NAME. Delete it
-        cmd_set_x_eth(dut_conn, X_ETH_VALUE, acl_in_policy_name, ACL_IN_XML_CMD, operation="operation=\"delete\"")
+        cmd_set_attach_policy_acl_in_x_eth(dut_conn, X_ETH_VALUE, acl_in_policy_name, operation="operation=\"delete\"")
 
     # ctrl-plane acl
     # ------------------------
