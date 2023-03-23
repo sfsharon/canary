@@ -60,10 +60,41 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 # Fixtures functions
 # ***************************************************************************************
 @pytest.fixture(scope="session")
+def netconf_client():
+    """
+    Connect to DUT using Netconf protocol
+    """
+    logging.info("Fixture: netconf_client")
+
+    import netconf_comm
+    import configparser
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    HOST_NAME       = constants['COMM']['HOST_CPM']
+    NETCONF_PORT    = int(constants['NETCONF']['PORT'])
+
+    CPM_USER                = "admin"
+    CPM_PASSWORD            = "admin"
+
+    dut_conn = netconf_comm.MyNetconf(hostname = HOST_NAME, port = NETCONF_PORT, username = CPM_USER, password = CPM_PASSWORD, 
+                                      publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
+    dut_conn.connect()
+
+    # Perform get hello from DUT first.
+    netconf_comm._cmd_hello(dut_conn)
+
+    yield dut_conn
+    dut_conn.close()
+
+@pytest.fixture(scope="session")
 def ssh_client():
     """
     Connect to DUT using SSH client
     """
+    logging.info("Fixture: ssh_client")
+    
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
@@ -84,6 +115,7 @@ def setup_dut(ssh_client):
     Move testing files into workdir in DUT.
     If workdir already exists, first delete it completly.
     """
+    logging.info("Fixture: setup_dut")
 
     # Read globals from ini file
     constants = configparser.ConfigParser()
@@ -106,9 +138,26 @@ def setup_dut(ssh_client):
             sftp.put(file, workdir + "/" + file)
 
 # ***************************************************************************************
-# Test Case #1
+# Test Case #0 - Setup Environment
 # ***************************************************************************************
-def test_TC01_acl_in(ssh_client, setup_dut) :
+def test_TC00_Setup_Environment(netconf_client):
+    """
+    Setup configured policy  
+    """
+    import netconf_comm
+
+    logging.info("test_TC00_Setup_Environment")
+
+    # Remove Policy if present, and configure new one 
+    netconf_comm.cmd_set_policy_deny_src_ip(netconf_client, '1.2.3.4', operation = "operation=\"delete\"")
+    netconf_comm.cmd_set_policy_deny_src_ip(netconf_client, '1.2.3.4', operation = "")
+    assert 1==1
+
+
+# ***************************************************************************************
+# Test Case #1 - ACL in
+# ***************************************************************************************
+def test_TC01_acl_in(ssh_client) :
     """
     Run test #1 on DUT :
         1. Configure ACL policy on port 23 
@@ -120,6 +169,8 @@ def test_TC01_acl_in(ssh_client, setup_dut) :
         4. Read ACL counter value, and assert that it incremented the value of packets injected 
            (Using SNMP)
     """
+    logging.info("test_TC01_acl_in")
+    
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')

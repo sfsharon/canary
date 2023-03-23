@@ -253,6 +253,7 @@ class MyNetconf(object):
                 return msg + bytes
     
     def close(self):
+        logging.info("Closing Netconf client")
         self.ssh.close()
         return True
 
@@ -752,8 +753,8 @@ def my_main() :
 
     # Policy 
     # -------------------------
-    cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "")
-    # cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "operation=\"delete\"")
+    # cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "")
+    cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "operation=\"delete\"")
     sys.exit(0)
 
     # x-eth acl rule
