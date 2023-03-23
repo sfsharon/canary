@@ -197,6 +197,42 @@ def get_text_attribute (xml_tree, unique_tag_name) :
 # ===================================
 if __name__ == "__main__" :
 
+    xml_conf_policy_acl_resp = """<?xml version="1.0" ?>
+    <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+            <data>
+                <policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">                
+                    <acl>
+                        <name>pol_ipv4</name>
+                        <rule>
+                            <name>r1</name>
+                            <conditional>
+                                <if>
+                                    <plaincondition>
+                                        <source-ip>
+                                            <plain>
+                                                <eq>
+                                                    <value>10.24.0.2</value>
+                                                </eq>
+                                            </plain>
+                                        </source-ip>
+                                    </plaincondition>
+                                    <then>
+                                        <deny/>
+                                    </then>
+                                </if>
+                            </conditional>
+                        </rule>
+                        <rule>
+                            <name>rule-default</name>
+                            <unconditional>
+                                <permit/>
+                            </unconditional>
+                        </rule>
+                    </acl>
+                </policy>
+            </data>
+    </rpc-reply>"""
+
     xml_conf_ctrl_plane_resp = """<?xml version="1.0" encoding="UTF-8"?>
     <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
         <data>

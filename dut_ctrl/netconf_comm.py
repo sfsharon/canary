@@ -3,14 +3,12 @@ Implement Netconf communication (get and set configuration) for DUT
 """
 
 import sys
-
 import paramiko
-
 import base64
 import socket
 from xml.dom import Node
-
 import logging
+
 logging.basicConfig(
                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
                     level=logging.INFO,
@@ -261,7 +259,6 @@ class MyNetconf(object):
 # ***************************************************************************************
 # Netconf Helper functions
 # ***************************************************************************************
-
 def create_connection(host, port):
     """
     sort-of socket.create_connection() (new in 2.6)
@@ -510,9 +507,49 @@ ACL_CTRL_PLANE_XML_CMD ="""<ctrl-plane xmlns="http://compass-eos.com/ns/compass_
                                 </policy>
                             </ctrl-plane>"""
 
+ACL_POLICY_DENY_SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">
+    <acl {operation}>
+        <name>canary_pol_deny_src_ip</name>
+        <rule>
+            <name>r1</name>
+            <conditional>
+                <if>
+                    <plaincondition>
+                        <source-ip>
+                            <plain>
+                                <eq>
+                                    <value>{src_ip_to_deny}</value>
+                                </eq>
+                            </plain>
+                        </source-ip>
+                    </plaincondition>
+                    <then>
+                        <deny/>
+                    </then>
+                </if>
+            </conditional>
+        </rule>
+        <rule>
+            <name>rule-default</name>
+            <unconditional>
+                <permit/>
+            </unconditional>
+        </rule>
+    </acl>
+</policy>"""
+
+
 # ***************************************************************************************
 # Canary Helper functions
 # ***************************************************************************************
+def _cmd_hello(dut_conn):
+    """Perform get hello from DUT first"""
+    logging.info("Sending Hello message")
+    versions = ['1.0']
+    dut_conn.send_msg(hello_msg(versions))
+    hello_reply = dut_conn.recv_msg()
+
+
 def _get_config_by_xpath(connection, xml_path_list) :
     """
     Input : connection  - Netconf connection object 
@@ -595,7 +632,7 @@ def _configure_and_commit(dut_conn, xml_command):
     """
     import parse_xml
 
-    logging.info(f"Configure xml_command :\n{xml_command}")
+    logging.debug(f"Configure xml_command :\n{xml_command}")
 
     dut_conn.send_msg(XML_REQ_TEMPLATE.format(xml_command = xml_command))
     xml_resp = dut_conn.recv_msg()
@@ -616,34 +653,8 @@ def _configure_and_commit(dut_conn, xml_command):
         raise Exception("Failed in sending commit !")
 
 # ***************************************************************************************
-# Commands functions
+# GET Commands functions
 # ***************************************************************************************
-def cmd_x_eth_configure(dut_conn, x_eth_interface, attribute_value, xml_cmd_template, operation):
-    """
-    Configure x-eth 0/0/x_eth_interface attribute
-    """
-    xml_command = xml_cmd_template.format(x_eth_interface   = x_eth_interface, 
-                                          operation         = operation,
-                                          attribute_value   = attribute_value)
-    _configure_and_commit(dut_conn, xml_command)
-
-def cmd_ctrl_plane_acl_configure(dut_conn, acl_ctrl_plane_type, operation, attribute_value):
-    """
-    Configure acl control plane attribute
-    """
-    xml_command = ACL_CTRL_PLANE_XML_CMD.format(acl_ctrl_plane_type   = acl_ctrl_plane_type, 
-                                                operation             = operation,
-                                                attribute_value       = attribute_value)
-    _configure_and_commit(dut_conn, xml_command)
-
-def cmd_hello(dut_conn):
-    """Perform get hello from DUT first"""
-    logging.info("Sending Hello message")
-    versions = ['1.0']
-    dut_conn.send_msg(hello_msg(versions))
-    hello_reply = dut_conn.recv_msg()
-
-
 def cmd_get_policy_acl_in_name(dut_conn, interface) :
     """Get acl in policy of interface
     Input : dut_conn  - DUT connection
@@ -673,6 +684,46 @@ def cmd_get_ctrl_plane_acl_name(dut_conn, ctrl_plane_acl_type) :
 
     return ctrl_plane_acl_name
 
+def cmd_get_acl_policy(dut_conn) :
+    """Get acl policy
+    Input : dut_conn  - DUT connection
+            
+    Return value : 
+    """
+    ACL_POLICY_PATH_LIST   = ["policy", "acl"]
+
+    acl_policy_name = _get_config_by_xpath(dut_conn, ACL_POLICY_PATH_LIST)
+    logging.info(f"ACL policy {acl_policy_name}")
+
+# ***************************************************************************************
+# SET Commands functions
+# ***************************************************************************************
+def cmd_set_x_eth(dut_conn, x_eth_interface, attribute_value, xml_cmd_template, operation):
+    """
+    Configure x-eth 0/0/x_eth_interface attribute
+    """
+    xml_command = xml_cmd_template.format(x_eth_interface   = x_eth_interface, 
+                                          operation         = operation,
+                                          attribute_value   = attribute_value)
+    _configure_and_commit(dut_conn, xml_command)
+
+def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_value):
+    """
+    Configure acl control plane attribute
+    """
+    xml_command = ACL_CTRL_PLANE_XML_CMD.format(acl_ctrl_plane_type   = acl_ctrl_plane_type, 
+                                                operation             = operation,
+                                                attribute_value       = attribute_value)
+    _configure_and_commit(dut_conn, xml_command)
+
+def cmd_set_policy_deny_src_ip (dut_conn, src_ip_to_deny, operation) :
+    """
+    Configure acl policy for denying a certain source IP
+    """
+    xml_command = ACL_POLICY_DENY_SRC_IP_XML_CMD.format(operation      = operation,
+                                                        src_ip_to_deny = src_ip_to_deny)
+    _configure_and_commit(dut_conn, xml_command)
+
 # ***************************************************************************************
 # UT
 # ***************************************************************************************
@@ -697,7 +748,13 @@ def my_main() :
     dut_conn.connect()
 
     # Perform get hello from DUT first.
-    cmd_hello(dut_conn)
+    _cmd_hello(dut_conn)
+
+    # Policy 
+    # -------------------------
+    cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "")
+    # cmd_set_policy_deny_src_ip(dut_conn, '1.2.3.4', operation = "operation=\"delete\"")
+    sys.exit(0)
 
     # x-eth acl rule
     # ------------------------
@@ -707,10 +764,10 @@ def my_main() :
 
     if acl_in_policy_name == None :
         # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
-        cmd_x_eth_configure(dut_conn, X_ETH_VALUE, NEW_ACL_POLICY_ACL_NAME, ACL_IN_XML_CMD, operation="")
+        cmd_set_x_eth(dut_conn, X_ETH_VALUE, NEW_ACL_POLICY_ACL_NAME, ACL_IN_XML_CMD, operation="")
     else :
         # Found acl in policy name on X_ETH_NAME. Delete it
-        cmd_x_eth_configure(dut_conn, X_ETH_VALUE, acl_in_policy_name, ACL_IN_XML_CMD, operation="operation=\"delete\"")
+        cmd_set_x_eth(dut_conn, X_ETH_VALUE, acl_in_policy_name, ACL_IN_XML_CMD, operation="operation=\"delete\"")
 
     # ctrl-plane acl
     # ------------------------
@@ -719,10 +776,10 @@ def my_main() :
 
     if ctrl_plane_nni_ingress == None :
         # Did not find an acl control plane nni_ingress. Configure a new one. 
-        cmd_ctrl_plane_acl_configure(dut_conn=dut_conn, acl_ctrl_plane_type="nni_ingress", attribute_value=NEW_ACL_POLICY_ACL_NAME, operation="")
+        cmd_set_ctrl_plane_acl(dut_conn=dut_conn, acl_ctrl_plane_type="nni_ingress", attribute_value=NEW_ACL_POLICY_ACL_NAME, operation="")
     else :
         # Found an acl control plane nni_ingress. Delete it. 
-        cmd_ctrl_plane_acl_configure(dut_conn=dut_conn, acl_ctrl_plane_type="nni_ingress", attribute_value=ctrl_plane_nni_ingress, operation="operation=\"delete\"")
+        cmd_set_ctrl_plane_acl(dut_conn=dut_conn, acl_ctrl_plane_type="nni_ingress", attribute_value=ctrl_plane_nni_ingress, operation="operation=\"delete\"")
 
 if __name__ == "__main__" :
     my_main()
