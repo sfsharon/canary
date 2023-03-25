@@ -629,7 +629,7 @@ def _configure_and_commit(dut_conn, xml_command):
     Configure DUT the xml_command, and immediatelly commit afterwards
     Input : dut_conn - DUT Connection
             xml_command - Command to commit
-    Return Value : None. Throws Exceptino if fails.
+    Return Value : True on Success, False otherwise.
     """
     import parse_xml
 
@@ -641,7 +641,8 @@ def _configure_and_commit(dut_conn, xml_command):
     if return_val != None :
         logging.info ("Successfull in sending xml command.")
     else :
-        raise Exception("Failed in sending xml command !")
+        logging.error (f"Failed in sending command:\n{xml_command}\nResponse:\n{xml_resp}")
+        return False
 
     xml_req = commit_msg()
     dut_conn.send_msg(xml_req)
@@ -650,7 +651,10 @@ def _configure_and_commit(dut_conn, xml_command):
     if return_val != None :
         logging.info ("Successfull in sending commit.")
     else :
-        raise Exception("Failed in sending commit !")
+        logging.error (f"Failed in sending commit:\n{xml_req}\nResponse:\n{xml_resp}")
+        return False
+
+    return True
 
 # ***************************************************************************************
 # GET Commands functions
@@ -707,7 +711,7 @@ def cmd_set_attach_policy_acl_in_x_eth(dut_conn, x_eth_interface, attribute_valu
                                           operation         = operation,
                                           attribute_value   = attribute_value)
     logging.info(f"x_eth_interface: {x_eth_interface}, operation: {operation}, attribute_value: {attribute_value}")
-    _configure_and_commit(dut_conn, xml_command)
+    return _configure_and_commit(dut_conn, xml_command)
 
 def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_value):
     """
@@ -717,7 +721,7 @@ def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_v
                                                 operation             = operation,
                                                 attribute_value       = attribute_value)
     logging.info(f"acl_ctrl_plane_type: {acl_ctrl_plane_type}, operation: {operation}, attribute_value: {attribute_value}")
-    _configure_and_commit(dut_conn, xml_command)
+    return _configure_and_commit(dut_conn, xml_command)
 
 def cmd_set_acl_policy__deny_src_ip (dut_conn, policy_name, src_ip_to_deny, operation) :
     """
@@ -727,7 +731,7 @@ def cmd_set_acl_policy__deny_src_ip (dut_conn, policy_name, src_ip_to_deny, oper
                                                         operation      = operation,
                                                         src_ip_to_deny = src_ip_to_deny)
     logging.info(f"policy_name: {policy_name}, operation: {operation}, src_ip_to_deny: {src_ip_to_deny}")
-    _configure_and_commit(dut_conn, xml_command)
+    return _configure_and_commit(dut_conn, xml_command)
 
 # ***************************************************************************************
 # UT

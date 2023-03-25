@@ -36,7 +36,7 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 
     try :
         # Execute a command on the remote server and get the output
-        logging.info(f"Running remote command\n\"{cmd_string}\" :")
+        logging.info(f"Running remote command:\n\"{cmd_string}\"")
 
         ssh_stdin, ssh_stdout, ssh_stderr = ssh_object.exec_command(cmd_string)
 
@@ -142,7 +142,14 @@ def setup_dut(ssh_client):
 # ***************************************************************************************
 def test_TC00_Setup_Environment(netconf_client):
     """
-    Setup configured policy  
+    Setup configured policy :
+    1. Read global variables from config.ini file
+    2. if interface physical_port_num contains acl in policy, delete it
+       (Using Netconf)
+    2. Create a new ACL policy named acl_in_policy_name (delete old one, create new one)
+       (Using Netconf)
+    3. Attach new policy to interface physical_port_num
+       (Using Netconf)
     """
     import netconf_comm
 
@@ -154,25 +161,34 @@ def test_TC00_Setup_Environment(netconf_client):
     constants.read('config.ini')
     physical_port_ip    = constants['TEST_SUITE_ACL']['SRC_IP']
     physical_port_num   = constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM']
-    ACL_IN_POLICY_NAME  = constants['TEST_SUITE_ACL']['ACL_IN_POLICY_NAME']
+    canary_acl_in_policy_name  = constants['TEST_SUITE_ACL']['acl_in_policy_name']
 
-    # Create acl policy ACL_IN_POLICY_NAME
-    # ----------------------------------------------------------    
-    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, ACL_IN_POLICY_NAME, physical_port_ip, operation = "operation=\"delete\"")
-    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, ACL_IN_POLICY_NAME, physical_port_ip, operation = "")
-
-    # Delete acl in policy in interface X_ETH_VALUE if exists, and attach ACL_IN_POLICY_NAME
-    # --------------------------------------------------------------------------------------------    
+    # If there is an acl policy attached to interface, delete it 
+    # ----------------------------------------------------------        
     X_ETH_VALUE        = "0/0/" + physical_port_num 
     acl_in_policy_name = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, X_ETH_VALUE)
 
     if acl_in_policy_name != None :
         logging.info(f"Found policy {acl_in_policy_name} on port {X_ETH_VALUE}. Deleting it")
         netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, acl_in_policy_name, operation="operation=\"delete\"")
-    
-    logging.info(f"Attach acl in policy {ACL_IN_POLICY_NAME} to interface {X_ETH_VALUE}")
-    netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, ACL_IN_POLICY_NAME, operation="")
 
+    # Create acl policy canary_acl_in_policy_name
+    # ----------------------------------------------------------    
+    # Delete operation may return False, if the object did not exist in the first place
+    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, canary_acl_in_policy_name, physical_port_ip, operation = "operation=\"delete\"")
+    # Create operation should always succeed.
+    rv = netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, canary_acl_in_policy_name, physical_port_ip, operation = "")
+    if rv == False :
+        raise Exception ("Failed committing cmd_set_acl_policy__deny_src_ip")
+    
+    # Attach acl in policy canary_acl_in_policy_name to interface X_ETH_VALUE
+    # -----------------------------------------------------------------        
+    logging.info(f"Attach acl in policy {canary_acl_in_policy_name} to interface {X_ETH_VALUE}")
+    rv = netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, canary_acl_in_policy_name, operation="")
+    if rv == False :
+        raise Exception ("Failed committing cmd_set_attach_policy_acl_in_x_eth")
+
+    # Initial test TC00 should always succeed
     assert True
 
 
@@ -182,13 +198,11 @@ def test_TC00_Setup_Environment(netconf_client):
 def test_TC01_acl_in(ssh_client) :
     """
     Run test #1 on DUT :
-        1. Configure ACL policy on port 23 
-           (Using Netconf)
-        2. Read ACL counter value 
+        1. Read ACL counter value 
            (Using SNMP)
-        3. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
+        2. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
            (Using BCM Diagnostic shell)
-        4. Read ACL counter value, and assert that it incremented the value of packets injected 
+        3. Read ACL counter value again, and assert that it incremented the value of packets injected 
            (Using SNMP)
     """
     import packet_creator
@@ -204,17 +218,15 @@ def test_TC01_acl_in(ssh_client) :
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
 
+    acl_in_counter_curr = None
+    acl_in_counter_prev = None
+
     # Test parameters
     bcm_port_num = str(phys_port_num + 1) # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
     num_of_tx = '3'
     
     # Generate the String hex representation of the frame, needed for transmission into the SDK :
     frame = packet_creator.create_frame(src_ip = '1.2.3.4', dst_ip = '5.5.5.5')
-    # frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
-    # frame translates to :
-    # >>> Ether(frame_byte)
-    # <Ether  dst=1e:94:a0:04:17:1a src=00:15:5d:69:29:ba type=IPv4 |
-    # <IP  version=4 ihl=5 tos=0x0 len=20 id=1 flags= frag=0 ttl=64 proto=hopopt chksum=0x66b7 src=10.24.0.2 dst=10.24.0.1 |>>
 
     # Read ACL counter value, and save it
     acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
@@ -229,6 +241,12 @@ def test_TC01_acl_in(ssh_client) :
     # Giving the SNMP counters a chance to update. 
     # Probably some periodic thread in DUT that updates counters for SNMP
     for i in range(snmp_counter_update_time) :
+        acl_in_counter_curr = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
+        
+        # If found that counter changed, break
+        if acl_in_counter_curr != acl_in_counter_prev :
+            logging.info(f"Received SNMP results after {i} seconds")
+            break
         import time
         if i % 10 == 0 :
             logging.info(f"Waited {i} seconds out of {snmp_counter_update_time} for SNMP to update DUT counters")
@@ -236,8 +254,6 @@ def test_TC01_acl_in(ssh_client) :
 
     # Verify counters incremented correctly
     num_of_tx = int(num_of_tx)
-    acl_in_counter_curr = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
-
     assert  ((acl_in_counter_curr - acl_in_counter_prev) == num_of_tx), \
              f"Test 1 failed: Prev acl in counter: {acl_in_counter_prev}, Curr acl in counter: {acl_in_counter_curr}"
 
