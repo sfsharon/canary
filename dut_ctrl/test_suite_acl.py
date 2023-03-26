@@ -55,6 +55,63 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 
     return exit_status
 
+def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx) :
+    """
+    Inject a frame into BCM, and verify that the counter advanced accordingly :
+        1. Read ACL counter value 
+           (Using SNMP)
+        2. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
+           (Using BCM Diagnostic shell)
+        3. Read ACL counter value again, and assert that it incremented the value of packets injected 
+           (Using SNMP)
+    """
+    import packet_creator
+
+    logging.info("_inject_frame_and_verify_counter")
+    
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    workdir                  = constants['DUT_ENV']['WORKDIR']
+    snmp_counter_update_time = int(constants['SNMP']['COUNTER_UPDATE_TIME'])
+
+    counter_curr = 0
+    counter_prev = 0
+
+    # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
+    bcm_port_num = str(phys_port_num + 1) 
+    
+    # Generate the String hex representation of the frame, needed for transmission into the SDK :
+    frame = packet_creator.create_frame(src_ip, dst_ip, dst_mac)
+
+    # Read ACL counter value, and save it
+    acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
+    
+    # Run remote command in DUT
+    command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
+    rv = _run_remote_shell_cmd (ssh_client, command)
+
+    if rv != 0 :
+        raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
+        
+    # Giving the SNMP counters a chance to update. 
+    # Probably some periodic thread in DUT that updates counters for SNMP
+    for i in range(snmp_counter_update_time) :
+        counter_curr = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
+        
+        # If found that counter changed, break
+        if counter_curr != counter_prev :
+            logging.info(f"Received SNMP results after {i} seconds")
+            break
+        import time
+        if i % 10 == 0 :
+            logging.info(f"Waited {i} seconds out of {snmp_counter_update_time} for SNMP to update DUT counters")
+        time.sleep(1)
+
+    # Verify counter incremented correctly
+    num_of_tx = int(num_of_tx)
+    assert  ((counter_curr - counter_prev) == num_of_tx), \
+             f"Error: Previous counter: {counter_prev}, Curr counter: {counter_curr}"
 
 # ***************************************************************************************
 # Fixtures functions
@@ -159,7 +216,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
     # ----------------------------------------------------------
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    physical_port_ip    = constants['TEST_SUITE_ACL']['SRC_IP']
+    physical_port_ip    = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     physical_port_num   = constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM']
     canary_acl_in_policy_name  = constants['TEST_SUITE_ACL']['acl_in_policy_name']
 
@@ -197,7 +254,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 # ***************************************************************************************
 def test_TC01_acl_in(ssh_client) :
     """
-    Run test #1 on DUT :
+    Test deny on acl rule R1 :
         1. Read ACL counter value 
            (Using SNMP)
         2. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
@@ -205,58 +262,37 @@ def test_TC01_acl_in(ssh_client) :
         3. Read ACL counter value again, and assert that it incremented the value of packets injected 
            (Using SNMP)
     """
-    import packet_creator
+    # import packet_creator
 
     logging.info("test_TC01_acl_in")
     
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    workdir                  = constants['DUT_ENV']['WORKDIR']
-    snmp_counter_update_time = int(constants['SNMP']['COUNTER_UPDATE_TIME'])
+
     phys_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
-    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP']
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    num_of_tx = '5'
+    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx)
 
-    acl_in_counter_curr = None
-    acl_in_counter_prev = None
 
-    # Test parameters
-    bcm_port_num = str(phys_port_num + 1) # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
-    num_of_tx = '3'
+def test_TC02_acl_in(ssh_client) :
+    """
+    Test permit on acl default rule
+    """
+    logging.info("test_TC02_acl_in")
     
-    # Generate the String hex representation of the frame, needed for transmission into the SDK :
-    frame = packet_creator.create_frame(src_ip, dst_ip, dst_mac)
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
 
-    # Read ACL counter value, and save it
-    acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
-    
-    # Run remote command in DUT
-    command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
-    rv = _run_remote_shell_cmd (ssh_client, command)
+    phys_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
+    dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
+    dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    num_of_tx = '10'
 
-    if rv != 0 :
-        raise Exception(f"Test #1 failed with rv {rv}, when running remote command \"{command}\"")
-        
-    # Giving the SNMP counters a chance to update. 
-    # Probably some periodic thread in DUT that updates counters for SNMP
-    for i in range(snmp_counter_update_time) :
-        acl_in_counter_curr = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
-        
-        # If found that counter changed, break
-        if acl_in_counter_curr != acl_in_counter_prev :
-            logging.info(f"Received SNMP results after {i} seconds")
-            break
-        import time
-        if i % 10 == 0 :
-            logging.info(f"Waited {i} seconds out of {snmp_counter_update_time} for SNMP to update DUT counters")
-        time.sleep(1)
+    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx)
 
-    # Verify counters incremented correctly
-    num_of_tx = int(num_of_tx)
-    assert  ((acl_in_counter_curr - acl_in_counter_prev) == num_of_tx), \
-             f"Test 1 failed: Prev acl in counter: {acl_in_counter_prev}, Curr acl in counter: {acl_in_counter_curr}"
-
-# def test_TC02(setup_logging):
-#     logging.info("Place holder for ctrl-plane ACL test")
