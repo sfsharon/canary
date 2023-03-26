@@ -140,7 +140,7 @@ def setup_dut(ssh_client):
 # ***************************************************************************************
 # Test Case #0 - Setup Environment
 # ***************************************************************************************
-def test_TC00_Setup_Environment(netconf_client):
+def test_TC00_Setup_Environment(setup_dut, netconf_client):
     """
     Setup configured policy :
     1. Read global variables from config.ini file
@@ -217,6 +217,7 @@ def test_TC01_acl_in(ssh_client) :
     phys_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
+    dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
 
     acl_in_counter_curr = None
     acl_in_counter_prev = None
@@ -226,7 +227,7 @@ def test_TC01_acl_in(ssh_client) :
     num_of_tx = '3'
     
     # Generate the String hex representation of the frame, needed for transmission into the SDK :
-    frame = packet_creator.create_frame(src_ip = '1.2.3.4', dst_ip = '5.5.5.5')
+    frame = packet_creator.create_frame(src_ip, dst_ip, dst_mac)
 
     # Read ACL counter value, and save it
     acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
@@ -257,5 +258,5 @@ def test_TC01_acl_in(ssh_client) :
     assert  ((acl_in_counter_curr - acl_in_counter_prev) == num_of_tx), \
              f"Test 1 failed: Prev acl in counter: {acl_in_counter_prev}, Curr acl in counter: {acl_in_counter_curr}"
 
-def test_TC02(setup_logging):
-    logging.info("Place holder for ctrl-plane ACL test")
+# def test_TC02(setup_logging):
+#     logging.info("Place holder for ctrl-plane ACL test")
