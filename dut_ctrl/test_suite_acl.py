@@ -55,7 +55,7 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
 
     return exit_status
 
-def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx) :
+def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx, snmp_read_counter_func) :
     """
     Inject a frame into BCM, and verify that the counter advanced accordingly :
         1. Read ACL counter value 
@@ -94,10 +94,11 @@ def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, 
     if rv != 0 :
         raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
         
-    # Giving the SNMP counters a chance to update. 
+    # Reading counter from SNMP. 
+    # Looping with sleep to give the SNMP counters a chance to update. 
     # Probably some periodic thread in DUT that updates counters for SNMP
-    for i in range(snmp_counter_update_time) :
-        counter_curr = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
+    for i in range(snmp_counter_update_time) :        
+        counter_curr = int(snmp_read_counter_func(phys_port_num))
         
         # If found that counter changed, break
         if counter_curr != counter_prev :
@@ -108,9 +109,13 @@ def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, 
             logging.info(f"Waited {i} seconds out of {snmp_counter_update_time} for SNMP to update DUT counters")
         time.sleep(1)
 
+
     # Verify counter incremented correctly
+    delta_counter = counter_curr - counter_prev
     num_of_tx = int(num_of_tx)
-    assert  ((counter_curr - counter_prev) == num_of_tx), \
+    logging.info(f"Previous counter: {counter_prev}, Curr counter: {counter_curr}, delta : {delta_counter}, expected delta: {num_of_tx}")
+    
+    assert  (delta_counter == num_of_tx), \
              f"Error: Previous counter: {counter_prev}, Curr counter: {counter_curr}"
 
 # ***************************************************************************************
@@ -252,7 +257,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_TC01_acl_in(ssh_client) :
+def test_TC01_rule_r1_acl_in(ssh_client) :
     """
     Test deny on acl rule R1 :
         1. Read ACL counter value 
@@ -274,11 +279,11 @@ def test_TC01_acl_in(ssh_client) :
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    num_of_tx = '5'
-    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx)
+    num_of_tx = '142'
+    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx, snmp_comm.acl_in_rule_r1_counter)
 
 
-def test_TC02_acl_in(ssh_client) :
+def test_TC02_default_rule_acl_in(ssh_client) :
     """
     Test permit on acl default rule
     """
@@ -292,7 +297,7 @@ def test_TC02_acl_in(ssh_client) :
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    num_of_tx = '10'
+    num_of_tx = '143'
 
-    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx)
+    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx, snmp_comm.acl_in_rule_default_counter)
 

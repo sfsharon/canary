@@ -109,6 +109,10 @@ PORT_TO_OID_MAP = { 0:1073741824,
                     52:1074597888,
                     53:1074614272}
 
+ACL_IN_RULE_COUNTER_PREFIX_OID   = ['SNMPv2-SMI', 'enterprises', '36348', '1', '1', '2', '3', '2', '2', '1', '1', '5'] 
+ACL_IN_RULE_R1_COUNTER_SUFFIX_OID = ['1', '2']
+ACL_IN_RULE_DEFAULT_COUNTER_SUFFIX_OID = ['1', '1']
+
 # ------------------------------------------------
 # MODULE INTERNAL FUNCTIONS
 # ------------------------------------------------
@@ -140,16 +144,36 @@ def _get_snmp_val (community_name, host, oid) :
 # MODULE API FUNCTIONS
 # ------------------------------------------------
 def acl_in_rule_r1_counter(port) :
-    acl_in_rule_r1_counter_oid = ['SNMPv2-SMI', 'enterprises', '36348', '1', '1', '2', '3', '2', '2', '1', '1', '5', str(PORT_TO_OID_MAP[port]), '1', '2']
+    # acl_in_rule_r1_counter_oid = ['SNMPv2-SMI', 'enterprises', '36348', '1', '1', '2', '3', '2', '2', '1', '1', '5', str(PORT_TO_OID_MAP[port]), '1', '2']
+    
+    # Build OID
+    acl_in_rule_r1_counter_oid = ACL_IN_RULE_COUNTER_PREFIX_OID.copy()
+    acl_in_rule_r1_counter_oid.append(str(PORT_TO_OID_MAP[port]))
+    acl_in_rule_r1_counter_oid.extend(ACL_IN_RULE_R1_COUNTER_SUFFIX_OID)
+
     val = _get_snmp_val(COMMUNITY_NAME, HOST, acl_in_rule_r1_counter_oid)
     logging.debug(f"Got value for {port}: {val}")
     return val
+
+def acl_in_rule_default_counter(port) :
+    # acl_in_rule_r1_counter_oid = ['SNMPv2-SMI', 'enterprises', '36348', '1', '1', '2', '3', '2', '2', '1', '1', '5', str(PORT_TO_OID_MAP[port]), '1', '2']
+    
+    # Build OID
+    acl_in_rule_default_counter_oid = ACL_IN_RULE_COUNTER_PREFIX_OID.copy()
+    acl_in_rule_default_counter_oid.append(str(PORT_TO_OID_MAP[port]))
+    acl_in_rule_default_counter_oid.extend(ACL_IN_RULE_DEFAULT_COUNTER_SUFFIX_OID)
+
+    val = _get_snmp_val(COMMUNITY_NAME, HOST, acl_in_rule_default_counter_oid)
+    logging.debug(f"Got value for {port}: {val}")
+    return val
+
+
 
 # ------------------------------------------------
 # UT
 # ------------------------------------------------
 if __name__ == "__main__" :
-    acl_in_rule_r1_counter(port = 23)
-
+    val = acl_in_rule_r1_counter(port = 3)
+    print(val)
     
     
