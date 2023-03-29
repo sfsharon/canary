@@ -8,10 +8,19 @@ import paramiko
 import logging
 import snmp_comm
 
+from enum import Enum
+
 logging.basicConfig(
                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
+
+# ***************************************************************************************
+# Module Helper classes
+# ***************************************************************************************
+class InterfaceOp(Enum):
+    ATTACH = 1
+    DETACH = 2
 
 # ***************************************************************************************
 # Module Helper functions
@@ -85,7 +94,7 @@ def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, 
     frame = packet_creator.create_frame(src_ip, dst_ip, dst_mac)
 
     # Read ACL counter value, and save it
-    acl_in_counter_prev = int(snmp_comm.acl_in_rule_r1_counter(phys_port_num))
+    counter_prev = int(snmp_read_counter_func(phys_port_num))
     
     # Run remote command in DUT
     command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
@@ -105,10 +114,9 @@ def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, 
             logging.info(f"Received SNMP results after {i} seconds")
             break
         import time
-        if i % 10 == 0 :
+        if i % 10 == 0 and i != 0 :
             logging.info(f"Waited {i} seconds out of {snmp_counter_update_time} for SNMP to update DUT counters")
         time.sleep(1)
-
 
     # Verify counter incremented correctly
     delta_counter = counter_curr - counter_prev
@@ -117,6 +125,25 @@ def _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, 
     
     assert  (delta_counter == num_of_tx), \
              f"Error: Previous counter: {counter_prev}, Curr counter: {counter_curr}"
+
+def acl_in_policy_to_interface (netconf_client, physical_port_num, acl_in_policy_name, interface_op) :
+    """
+    Perform attach / detach operation of an ACL in policy on interface physical_port_num.
+    Return : True on success, False otherwise
+    """
+    import netconf_comm
+
+    rv = None
+    x_eth_name        = "0/0/" + str(physical_port_num )
+    logging.info(f"Operation: {interface_op.name} for policy name:{acl_in_policy_name} on port {x_eth_name}")
+
+    if interface_op is InterfaceOp.ATTACH :
+        rv = netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, x_eth_name, acl_in_policy_name, operation="")
+    elif interface_op is InterfaceOp.DETACH :
+        rv = netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, x_eth_name, acl_in_policy_name, operation="operation=\"delete\"")
+    else :
+        raise Exception(f"Received unfamiliar operation {interface_op}")
+    return rv
 
 # ***************************************************************************************
 # Fixtures functions
@@ -225,14 +252,13 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
     physical_port_num   = constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM']
     canary_acl_in_policy_name  = constants['TEST_SUITE_ACL']['acl_in_policy_name']
 
-    # If there is an acl policy attached to interface, delete it 
-    # ----------------------------------------------------------        
-    X_ETH_VALUE        = "0/0/" + physical_port_num 
-    acl_in_policy_name = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, X_ETH_VALUE)
+    # If there is an acl in policy attached to interface, delete it 
+    # ---------------------------------------------------------------        
+    x_eth_name        = "0/0/" + physical_port_num 
+    acl_in_policy_name = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, x_eth_name)
 
     if acl_in_policy_name != None :
-        logging.info(f"Found policy {acl_in_policy_name} on port {X_ETH_VALUE}. Deleting it")
-        netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, acl_in_policy_name, operation="operation=\"delete\"")
+        acl_in_policy_to_interface (netconf_client, physical_port_num, acl_in_policy_name, InterfaceOp.DETACH) 
 
     # Create acl policy canary_acl_in_policy_name
     # ----------------------------------------------------------    
@@ -243,61 +269,85 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
     if rv == False :
         raise Exception ("Failed committing cmd_set_acl_policy__deny_src_ip")
     
-    # Attach acl in policy canary_acl_in_policy_name to interface X_ETH_VALUE
-    # -----------------------------------------------------------------        
-    logging.info(f"Attach acl in policy {canary_acl_in_policy_name} to interface {X_ETH_VALUE}")
-    rv = netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, X_ETH_VALUE, canary_acl_in_policy_name, operation="")
-    if rv == False :
-        raise Exception ("Failed committing cmd_set_attach_policy_acl_in_x_eth")
-
     # Initial test TC00 should always succeed
     assert True
-
 
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_TC01_rule_r1_acl_in(ssh_client) :
+def test_TC01_rule_r1_acl_in(ssh_client, netconf_client) :
     """
     Test deny on acl rule R1 :
-        1. Read ACL counter value 
-           (Using SNMP)
-        2. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
-           (Using BCM Diagnostic shell)
-        3. Read ACL counter value again, and assert that it incremented the value of packets injected 
-           (Using SNMP)
+        1. Attach policy to interface
+           (Using Netconf)
+        2. Inject frame and verify counters increase
+        3. Detach policy to interface
+           (Using Netconf)
     """
-    # import packet_creator
-
-    logging.info("test_TC01_acl_in")
+    logging.info("test_TC01_rule_r1_acl_in")
     
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
 
-    phys_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    canary_acl_in_policy_name  = constants['TEST_SUITE_ACL']['acl_in_policy_name']
     num_of_tx = '142'
-    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx, snmp_comm.acl_in_rule_r1_counter)
 
+    # Attach acl in policy to interface
+    # ---------------------------------------------------------------------------        
+    rv = acl_in_policy_to_interface (netconf_client, physical_port_num, canary_acl_in_policy_name, InterfaceOp.ATTACH) 
+    if rv == False :
+        raise Exception (f"Failed attaching {canary_acl_in_policy_name} from interface {physical_port_num}")
 
-def test_TC02_default_rule_acl_in(ssh_client) :
+    # Perform test
+    # ---------------------------------------------------------------------------        
+    _inject_frame_and_verify_counter(ssh_client, 
+                                     physical_port_num, 
+                                     src_ip, dst_ip, dst_mac, num_of_tx, 
+                                     snmp_read_counter_func = snmp_comm.acl_in_rule_r1_counter)
+
+    # Detach acl in policy from interface
+    # ---------------------------------------------------------------------------        
+    rv = acl_in_policy_to_interface (netconf_client, physical_port_num, canary_acl_in_policy_name, InterfaceOp.DETACH) 
+    if rv == False :
+        raise Exception (f"Failed detaching {canary_acl_in_policy_name} from interface {physical_port_num}")
+
+def test_TC02_default_rule_acl_in(ssh_client, netconf_client) :
     """
     Test permit on acl default rule
     """
-    logging.info("test_TC02_acl_in")
+    logging.info("test_TC02_default_rule_acl_in")
     
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
 
-    phys_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    canary_acl_in_policy_name  = constants['TEST_SUITE_ACL']['acl_in_policy_name']
     num_of_tx = '143'
 
-    _inject_frame_and_verify_counter(ssh_client, phys_port_num, src_ip, dst_ip, dst_mac, num_of_tx, snmp_comm.acl_in_rule_default_counter)
+    # Attach acl in policy to interface
+    # ---------------------------------------------------------------------------        
+    rv = acl_in_policy_to_interface (netconf_client, physical_port_num, canary_acl_in_policy_name, InterfaceOp.ATTACH) 
+    if rv == False :
+        raise Exception (f"Failed attaching {canary_acl_in_policy_name} from interface {physical_port_num}")
 
+    # Perform test
+    # ---------------------------------------------------------------------------        
+    _inject_frame_and_verify_counter(ssh_client, 
+                                     physical_port_num, 
+                                     src_ip, dst_ip, dst_mac, num_of_tx, 
+                                     snmp_read_counter_func = snmp_comm.acl_in_rule_default_counter)
+
+    # Detach acl in policy from interface
+    # ---------------------------------------------------------------------------        
+    rv = acl_in_policy_to_interface (netconf_client, physical_port_num, canary_acl_in_policy_name, InterfaceOp.DETACH) 
+    if rv == False :
+        raise Exception (f"Failed detaching {canary_acl_in_policy_name} from interface {physical_port_num}")
