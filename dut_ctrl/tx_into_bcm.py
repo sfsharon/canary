@@ -48,11 +48,11 @@ def tx_frame(frame, num_of_tx, port) :
 
 if __name__ == "__main__" :
     if len(sys.argv) == 4 :
-        tx_frame(sys.argv[1], sys.argv[2], sys.argv[3])
+        tx_frame(frame = sys.argv[1], num_of_tx = sys.argv[2], port = sys.argv[3])
     else :
         # Send an example frame : "screen -r bcmrm -X   stuff   $' Tx 3 PSRC=24 DATA=0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001\n'"
-        logger.info("Running UT values")
-        frame = '0x1e94a004171a00155d6929ba08004500001400010000400066b70a1800020a180001'
-        num_of_tx = '3'
-        port = '24' # Value 24 referes to physical port x-eth 0/0/23
+        logger.info("Running UT values- Sending an ICMP frame (ping)")
+        frame = '1e94a004170600155dcdff0708004500001c00010000400172d601020304010203030800f7ff00000000'
+        num_of_tx = '42'
+        port = '5' # Value 24 referes to physical port x-eth 0/0/23
         tx_frame(frame, num_of_tx, port)

@@ -480,14 +480,14 @@ RPC_REPLY_TAG_NAME = "rpc-reply"
 OK_TAG_NAME        = "ok"
 
 XML_REQ_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
-            <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-                <edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>
-                    <target><candidate/></target>
-                    <config>
-                        {xml_command}
-                    </config>
-                </edit-config>
-            </rpc>"""
+                        <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+                            <edit-config xmlns:nc='urn:ietf:params:xml:ns:netconf:base:1.0'>
+                                <target><candidate/></target>
+                                <config>
+                                    {xml_command}
+                                </config>
+                            </edit-config>
+                        </rpc>"""
 
 ACL_IN_XML_CMD = """<interface xmlns="http://compass-eos.com/ns/compass_yang">
                         <x-eth>
@@ -503,41 +503,41 @@ ACL_IN_XML_CMD = """<interface xmlns="http://compass-eos.com/ns/compass_yang">
 ACL_CTRL_PLANE_XML_CMD ="""<ctrl-plane xmlns="http://compass-eos.com/ns/compass_yang">
                                 <policy>
                                     <acl>
-                                        <{acl_ctrl_plane_type} {operation}>{attribute_value}</{acl_ctrl_plane_type}>
+                                        <{acl_ctrl_plane_type}{operation}>{attribute_value}</{acl_ctrl_plane_type}>
                                     </acl>
                                 </policy>
                             </ctrl-plane>"""
 
 ACL_POLICY_DENY_SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">
-    <acl {operation}>
-        <name>{policy_name}</name>
-        <rule>
-            <name>r1</name>
-            <conditional>
-                <if>
-                    <plaincondition>
-                        <source-ip>
-                            <plain>
-                                <eq>
-                                    <value>{src_ip_to_deny}</value>
-                                </eq>
-                            </plain>
-                        </source-ip>
-                    </plaincondition>
-                    <then>
-                        <deny/>
-                    </then>
-                </if>
-            </conditional>
-        </rule>
-        <rule>
-            <name>rule-default</name>
-            <unconditional>
-                <permit/>
-            </unconditional>
-        </rule>
-    </acl>
-</policy>"""
+                                    <acl {operation}>
+                                        <name>{policy_name}</name>
+                                        <rule>
+                                            <name>r1</name>
+                                            <conditional>
+                                                <if>
+                                                    <plaincondition>
+                                                        <source-ip>
+                                                            <plain>
+                                                                <eq>
+                                                                    <value>{src_ip_to_deny}</value>
+                                                                </eq>
+                                                            </plain>
+                                                        </source-ip>
+                                                    </plaincondition>
+                                                    <then>
+                                                        <deny/>
+                                                    </then>
+                                                </if>
+                                            </conditional>
+                                        </rule>
+                                        <rule>
+                                            <name>rule-default</name>
+                                            <unconditional>
+                                                <permit/>
+                                            </unconditional>
+                                        </rule>
+                                    </acl>
+                                </policy>"""
 
 
 # ***************************************************************************************
@@ -747,7 +747,7 @@ def my_main() :
     constants.read('config.ini')
     HOST_NAME       = constants['COMM']['HOST_CPM']
     NETCONF_PORT    = int(constants['NETCONF']['PORT'])
-    ACL_IN_POLICY_NAME = constants['TEST_SUITE_ACL']['ACL_IN_POLICY_NAME']
+    ACL_POLICY_NAME = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
 
     NEW_ACL_POLICY_ACL_NAME  = "pol_ipv4"
     CPM_USER                = "admin"
@@ -762,22 +762,22 @@ def my_main() :
 
     # Policy 
     # -------------------------
-    # cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_IN_POLICY_NAME, '1.2.3.4', operation = "")
-    cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_IN_POLICY_NAME, '1.2.3.4', operation = "operation=\"delete\"")
+    # cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_POLICY_NAME, '1.2.3.4', operation = "")
+    cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_POLICY_NAME, '1.2.3.4', operation = "operation=\"delete\"")
     sys.exit(0)
 
     # x-eth acl rule
     # ------------------------
     X_ETH_VALUE             = "0/0/1"
     # Get acl in policy name of X_ETH_VALUE
-    acl_in_policy_name = cmd_get_policy_acl_in_name(dut_conn, X_ETH_VALUE)
+    acl_policy_name = cmd_get_policy_acl_in_name(dut_conn, X_ETH_VALUE)
 
-    if acl_in_policy_name == None :
+    if acl_policy_name == None :
         # Did not find an acl in policy on X_ETH_VALUE. Configure a new one. 
         cmd_set_attach_policy_acl_in_x_eth(dut_conn, X_ETH_VALUE, NEW_ACL_POLICY_ACL_NAME, operation="")
     else :
         # Found acl in policy name on X_ETH_NAME. Delete it
-        cmd_set_attach_policy_acl_in_x_eth(dut_conn, X_ETH_VALUE, acl_in_policy_name, operation="operation=\"delete\"")
+        cmd_set_attach_policy_acl_in_x_eth(dut_conn, X_ETH_VALUE, acl_policy_name, operation="operation=\"delete\"")
 
     # ctrl-plane acl
     # ------------------------

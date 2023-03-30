@@ -279,14 +279,14 @@ if __name__ == "__main__" :
     """
 
     x_eth_interface = "0/0/2"
-    acl_in_policy_name = "pol_ipv6"
+    acl_policy_name = "pol_ipv6"
     xml_filter = f"""
     <interface xmlns="http://compass-eos.com/ns/compass_yang">
         <x-eth>
             <instance>{x_eth_interface}</instance>
             <policy>
                     <acl>
-                    <in>{acl_in_policy_name}</in>
+                    <in>{acl_policy_name}</in>
                 </acl>
             </policy>
         </x-eth>
@@ -302,8 +302,8 @@ if __name__ == "__main__" :
 
     # Get policy acl name from XML configuration
     instance_node = get_instance_by_string(xml_conf_resp, "x-eth", "0/0/1")
-    acl_in_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
-    logging.info (acl_in_policy_name)
+    acl_policy_name = get_instance_text_attribute (instance_node, ["policy", "acl", "in"])
+    logging.info (acl_policy_name)
     
     # Get response (ok / error) from DUT xml
     instance_node = get_instance_by_tag(xml_command_resp, "rpc-reply", "ok") 
