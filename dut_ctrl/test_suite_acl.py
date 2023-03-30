@@ -124,6 +124,8 @@ def _inject_frame_and_verify_counter(ssh_client,
         frame = packet_creator.create_l2_l3_frame(src_ip, dst_ip, dst_mac)
     elif frame_type is FrameType.ICMP_FRAME :
         frame = packet_creator.create_icmp_frame(src_ip, dst_ip, dst_mac)
+    else :
+        raise Exception (f"Unrecognized frame type {frame_type}")
 
     # 2. Read ACL counter value, and save it
     counter_prev = int(snmp_read_counter_func(phys_port_num))
