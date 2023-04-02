@@ -430,11 +430,13 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
     constants.read('config.ini')
 
     physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
-    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
+    
+    rule_name = "r1"
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
+    
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
     canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
-    rule_name = "r1"
     workdir = constants['DUT_ENV']['WORKDIR']    
     num_of_tx = '87'
 
@@ -459,8 +461,8 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
                                      canary_acl_policy_name,
                                      rule_name)
 
-    # # Detach acl in policy from interface
-    # # ---------------------------------------------------------------------------        
-    # rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name, InterfaceOp.DETACH) 
-    # if rv == False :
-    #     raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+    # Detach acl in policy from interface
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
+    if rv == False :
+        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
