@@ -305,11 +305,24 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 
     # If there is an acl in policy attached to interface, delete it 
     # ---------------------------------------------------------------        
-    x_eth_name        = "0/0/" + physical_port_num 
-    acl_policy_name = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, x_eth_name)
-
+    x_eth_name         = "0/0/" + physical_port_num 
+    acl_policy_name    = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, x_eth_name)
     if acl_policy_name != None :
         _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, acl_policy_name, InterfaceOp.DETACH) 
+
+    # If there is an acl egress ctrl-plane configured, delete it 
+    # ---------------------------------------------------------------        
+    ctrl_plane_type = AclCtrlPlaneType.EGRESS.name.lower()
+    acl_ctrl_plane_egress_policy_name = netconf_comm.cmd_get_ctrl_plane_acl_name(netconf_client, ctrl_plane_type)
+    if acl_ctrl_plane_egress_policy_name != None :
+        _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_ctrl_plane_egress_policy_name, InterfaceOp.DETACH) 
+
+    # If there is an acl nni_ingress ctrl-plane configured, delete it 
+    # ---------------------------------------------------------------        
+    ctrl_plane_type = AclCtrlPlaneType.NNI_INGRESS.name.lower()
+    acl_ctrl_plane_nni_ingress_policy_name = netconf_comm.cmd_get_ctrl_plane_acl_name(netconf_client, ctrl_plane_type)
+    if acl_ctrl_plane_nni_ingress_policy_name != None :
+        _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_ctrl_plane_nni_ingress_policy_name, InterfaceOp.DETACH) 
 
     # Create acl policy canary_acl_policy_name
     # ----------------------------------------------------------    
@@ -466,3 +479,100 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
     rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+
+def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+    """
+    Test deny rule default on acl ctrl-plane egress
+    """
+    logging.info("test_TC04_acl_rule_default_ctrl_plane_egress")
+    
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+
+    physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
+    
+    dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
+    dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    rule_name = "rule-default"
+    workdir = constants['DUT_ENV']['WORKDIR']    
+    num_of_tx = '75'
+
+    ctrl_plane_type = AclCtrlPlaneType.EGRESS.name.lower()
+
+    # Attach acl policy to acl egress ctrl-plane
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    if rv == False :
+        raise Exception (f"Failed attaching {canary_acl_policy_name} to ctrl-plane {ctrl_plane_type}")
+
+    # Perform test
+    # ---------------------------------------------------------------------------        
+    _inject_frame_and_verify_counter(ssh_client, 
+                                     cli_client,                                     
+                                     src_ip, dst_ip, dst_mac, 
+                                     num_of_tx,
+                                     FrameType.ICMP_FRAME,
+                                     InterfaceType.CTRL_PLANE,
+                                     workdir,
+                                     physical_port_num,  
+                                     canary_acl_policy_name,
+                                     rule_name)
+
+    # Detach acl in policy from interface
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
+    if rv == False :
+        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+
+def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
+    """
+    Test deny rule r1 on acl ctrl-plane egress
+    """
+    logging.info("test_TC05_acl_rule_r1_ctrl_plane_nni_ingress")
+    
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+
+    physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    
+    rule_name = "r1"
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
+    
+    dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
+    dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    workdir = constants['DUT_ENV']['WORKDIR']    
+    num_of_tx = '123'
+
+    ctrl_plane_type = AclCtrlPlaneType.NNI_INGRESS.name.lower()
+
+    # Attach acl policy to acl egress ctrl-plane
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    if rv == False :
+        raise Exception (f"Failed attaching {canary_acl_policy_name} to ctrl-plane {ctrl_plane_type}")
+
+    # Perform test
+    # ---------------------------------------------------------------------------        
+    _inject_frame_and_verify_counter(ssh_client, 
+                                     cli_client,                                     
+                                     src_ip, dst_ip, dst_mac, 
+                                     num_of_tx,
+                                     FrameType.ICMP_FRAME,
+                                     InterfaceType.CTRL_PLANE,
+                                     workdir,
+                                     physical_port_num,  
+                                     canary_acl_policy_name,
+                                     rule_name)
+
+    # Detach acl in policy from interface
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
+    if rv == False :
+        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+
