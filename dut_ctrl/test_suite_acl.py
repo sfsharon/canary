@@ -7,38 +7,16 @@ import configparser
 import paramiko
 import logging
 import snmp_comm
-
-from enum import Enum
+from common_enums import InterfaceOp, AclCtrlPlaneType, FrameType, InterfaceType
 
 logging.basicConfig(
                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
-# ***************************************************************************************
-# Module Helper classes
-# ***************************************************************************************
-class InterfaceOp(Enum):
-    ATTACH = 1
-    DETACH = 2
-
-class AclCtrlPlaneType(Enum):
-    """
-    Enumeration used both for activating the correct if condition, 
-    and the string name for the XML sent to the DUT.
-    """
-    EGRESS      = 1
-    NNI_INGRESS = 2
-
-class FrameType(Enum):
-    """
-    Enumeration for the different frame types that can be injected into BCM
-    """
-    L2_L3_FRAME = 1
-    ICMP_FRAME  = 2
 
 # ***************************************************************************************
-# Module Helper functions
+# Helper functions
 # ***************************************************************************************
 def _remote_exists(sftp, path):
     """ 
@@ -80,46 +58,43 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
     return exit_status
 
 def _inject_frame_and_verify_counter(ssh_client, 
-                                     phys_port_num, 
+                                     cli_client,
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx, 
-                                     snmp_read_counter_func, 
-                                     frame_type) :
+                                     frame_type,
+                                     interface_type,
+                                     workdir, 
+                                     physical_port_num,
+                                     policy_name,
+                                     rule_name) :
     """
     Inject a frame into BCM, and verify that the counter advanced accordingly :
         1. Create packet
         2. Read ACL counter value 
-           (Using SNMP)
+           (Using CLI)
         3. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
-           (Using BCM Diagnostic shell)
+           (Using BCM Diagnostic shell "TX" command)
         4. Read ACL counter value again, and assert that it incremented the value of packets injected 
-           (Using SNMP)
+           (Using CLI)
 
         Input : ssh_client      - 
-                phys_port_num   - 
+                cli_client      - 
                 src_ip, dst_ip, dst_mac - 
                 num_of_tx       - 
-                snmp_read_counter_func - 
                 frame_type  - Enumeration for different frames to be transmitted. L2_L3 or ICMP frames
+                interface_type - Enumeration InterfaceType, values "CTRL_PLANE", "X_ETH"
         Return value : None
     """
     import packet_creator
+    import cli_control
 
     logging.info("_inject_frame_and_verify_counter")
     
-    # Read globals from ini file
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
-    workdir                  = constants['DUT_ENV']['WORKDIR']
-    snmp_counter_update_time = int(constants['SNMP']['COUNTER_UPDATE_TIME'])
-
-    counter_curr = 0
-    counter_prev = 0
 
     # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
-    bcm_port_num = str(phys_port_num + 1) 
+    bcm_port_num = str(int(physical_port_num) + 1) 
     
-    # 1. Generate the String hex representation of the frame, needed for transmission into the SDK :
+    # 1. Generate the Byte hex representation of the frame, needed for transmission into the SDK :
     if frame_type is FrameType.L2_L3_FRAME :
         frame = packet_creator.create_l2_l3_frame(src_ip, dst_ip, dst_mac)
     elif frame_type is FrameType.ICMP_FRAME :
@@ -127,9 +102,10 @@ def _inject_frame_and_verify_counter(ssh_client,
     else :
         raise Exception (f"Unrecognized frame type {frame_type}")
 
-    # 2. Read ACL counter value, and save it
-    counter_prev = int(snmp_read_counter_func(phys_port_num))
-    
+    # 2. Read ACL counter value
+    counter_prev = int(cli_control.get_show_counter(cli_client, physical_port_num, interface_type, policy_name, rule_name))
+                                                                                        
+
     # 3. Inject frame into BCM - Run remote command in DUT
     command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
     rv = _run_remote_shell_cmd (ssh_client, command)
@@ -137,20 +113,9 @@ def _inject_frame_and_verify_counter(ssh_client,
     if rv != 0 :
         raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
         
-    # 4. Reading ACL counter value from SNMP. 
-    #    Looping with sleep to give the SNMP counters a chance to update. 
-    #    Probably some periodic thread in DUT that updates counters for SNMP
-    for i in range(snmp_counter_update_time) :        
-        counter_curr = int(snmp_read_counter_func(phys_port_num))
-        
-        # If found that counter changed, break
-        if counter_curr != counter_prev :
-            logging.info(f"Received SNMP results after {i} seconds")
-            break
-        import time
-        if i % 10 == 0 and i != 0 :
-            logging.info(f"Waited {i} seconds out of {snmp_counter_update_time} for SNMP to update DUT counters")
-        time.sleep(1)
+    # 4. Reading updated ACL counter
+    counter_curr = int(cli_control.get_show_counter(cli_client, physical_port_num, interface_type, policy_name, rule_name))
+
 
     # Verify counter incremented correctly
     delta_counter = counter_curr - counter_prev
@@ -215,6 +180,25 @@ def _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_polic
 # ***************************************************************************************
 # Fixtures functions
 # ***************************************************************************************
+@pytest.fixture(scope="session")
+def cli_client():
+    """
+    Connect to DUT using pyexpect
+    """
+    logging.info("Fixture: cli_client")
+
+    import cli_control
+    import configparser
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    DUT_NUMBER = constants['GENERAL']['DUT']
+
+    cli_comm = cli_control.open_cli_session(DUT_NUMBER)
+    yield cli_comm
+    cli_control.close_cli_session(cli_comm)
+
 @pytest.fixture(scope="session")
 def netconf_client():
     """
@@ -296,7 +280,6 @@ def setup_dut(ssh_client):
 # ***************************************************************************************
 # Test Case #0 - Setup Environment
 # ***************************************************************************************
-@pytest.mark.torun
 def test_TC00_Setup_Environment(setup_dut, netconf_client):
     """
     Setup configured policy :
@@ -343,7 +326,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_TC01_rule_r1_acl_in(ssh_client, netconf_client) :
+def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test deny on acl rule R1 :
         1. Attach policy to interface
@@ -363,6 +346,8 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client) :
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
     canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    rule_name = "r1"
+    workdir = constants['DUT_ENV']['WORKDIR']
     num_of_tx = '142'
 
     # Attach acl in policy to interface
@@ -374,10 +359,15 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client) :
     # Perform test
     # ---------------------------------------------------------------------------        
     _inject_frame_and_verify_counter(ssh_client, 
-                                     physical_port_num, 
-                                     src_ip, dst_ip, dst_mac, num_of_tx, 
-                                     snmp_read_counter_func = snmp_comm.acl_in_rule_r1_counter,
-                                     frame_type = FrameType.L2_L3_FRAME)
+                                     cli_client,                                     
+                                     src_ip, dst_ip, dst_mac, 
+                                     num_of_tx,
+                                     FrameType.L2_L3_FRAME,
+                                     InterfaceType.X_ETH,
+                                     workdir,
+                                     physical_port_num,  
+                                     canary_acl_policy_name,
+                                     rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
@@ -385,7 +375,7 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client) :
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_TC02_default_rule_acl_in(ssh_client, netconf_client) :
+def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test permit on acl default rule
     """
@@ -400,6 +390,8 @@ def test_TC02_default_rule_acl_in(ssh_client, netconf_client) :
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
     canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    rule_name = "rule-default"
+    workdir = constants['DUT_ENV']['WORKDIR']
     num_of_tx = '143'
 
     # Attach acl in policy to interface
@@ -411,10 +403,15 @@ def test_TC02_default_rule_acl_in(ssh_client, netconf_client) :
     # Perform test
     # ---------------------------------------------------------------------------        
     _inject_frame_and_verify_counter(ssh_client, 
-                                     physical_port_num, 
-                                     src_ip, dst_ip, dst_mac, num_of_tx, 
-                                     snmp_read_counter_func = snmp_comm.acl_in_rule_default_counter,
-                                     frame_type = FrameType.L2_L3_FRAME)
+                                     cli_client,                                     
+                                     src_ip, dst_ip, dst_mac, 
+                                     num_of_tx,
+                                     FrameType.L2_L3_FRAME,
+                                     InterfaceType.X_ETH,
+                                     workdir,
+                                     physical_port_num,  
+                                     canary_acl_policy_name,
+                                     rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
@@ -422,8 +419,7 @@ def test_TC02_default_rule_acl_in(ssh_client, netconf_client) :
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-@pytest.mark.torun
-def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client) :
+def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
@@ -438,6 +434,8 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client) :
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
     canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    rule_name = "r1"
+    workdir = constants['DUT_ENV']['WORKDIR']    
     num_of_tx = '87'
 
     ctrl_plane_type = AclCtrlPlaneType.EGRESS.name.lower()
@@ -451,10 +449,15 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client) :
     # Perform test
     # ---------------------------------------------------------------------------        
     _inject_frame_and_verify_counter(ssh_client, 
-                                     physical_port_num, 
-                                     src_ip, dst_ip, dst_mac, num_of_tx, 
-                                     snmp_read_counter_func = snmp_comm.acl_in_rule_default_counter,
-                                     frame_type = FrameType.ICMP_FRAME)
+                                     cli_client,                                     
+                                     src_ip, dst_ip, dst_mac, 
+                                     num_of_tx,
+                                     FrameType.ICMP_FRAME,
+                                     InterfaceType.CTRL_PLANE,
+                                     workdir,
+                                     physical_port_num,  
+                                     canary_acl_policy_name,
+                                     rule_name)
 
     # # Detach acl in policy from interface
     # # ---------------------------------------------------------------------------        

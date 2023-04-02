@@ -8,33 +8,36 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
+from common_enums import InterfaceOp, AclCtrlPlaneType, FrameType, InterfaceType
+
 import pexpect
 
 # ***************************************************************************************
 # Module helper functions
 # ***************************************************************************************
-def _parse_show_counter(cli_response, policy_name, action) :
+def _parse_show_counter(cli_response, policy_name, rule_name) :
     """
         Parse input from DUT for acl show command, and return the counter value
         Input : cli_response - String multi line of the DUT response
                 policy_name  - String 
-                action       - String, Values can be "deny" or "permit"
-        Return value : Integer of the ACTION acl counter
+                rule_name    - String
+        Return value : Integer counter of the rule_name acl counter
 
-        Hidden assumption : The rules have only two lines at most.
+        Hidden assumption : There are only two rules in the acl policy : 
+                            Regular rule (such as "r1"), and a default rule (name always "rule-default")
     """
     normalised_input = [line.lstrip() for line in cli_response.lower().splitlines()]
     for i, line in enumerate(normalised_input) :
         if policy_name in line :
-            # The action is the second word from the end of the line
-            first_action  = (normalised_input[i].split())[-2]
-            second_action = (normalised_input[i+1].split())[-2]
-            if action == first_action :
+            # The Rule name is the third word from the end of the line
+            first_rule  = (normalised_input[i].split())[-3]
+            second_rule = (normalised_input[i+1].split())[-3]
+            if rule_name == first_rule :
                 return int((normalised_input[i].split())[-1])
-            if action == second_action :
+            if rule_name == second_rule :
                 return int((normalised_input[i+1].split())[-1])
             else :
-                raise Exception (f"Unrecognized action: {action}")
+                raise Exception (f"Unrecognized Rule name: {rule_name}")
 
 # ***************************************************************************************
 # External API functions
@@ -43,7 +46,7 @@ def open_cli_session(device_number):
     """
     Open a pexpect session to a DUT CLI shell (in the cpm)
     Input : Device number, such as 3010
-    Return value : pexpect cli_comm
+    Return value : Spawned pexpect process (cli_comm)
     """
     
     CPM_ADDRESS = f"10.3.{device_number[2:4]}.1"
@@ -53,7 +56,7 @@ def open_cli_session(device_number):
 
     try :
         # SSH into the machine
-        logging.info(f"Connecting to device {device_number}")
+        logging.info(f"Opening CLI connection to device {device_number}")
         cli_comm = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
                               encoding='utf-8',
                               timeout=TIMEOUT)
@@ -71,32 +74,51 @@ def open_cli_session(device_number):
         logging.error(f"Cannot connect to device {device_number}")
 
     return cli_comm   
-            
-def get_show_counter (cli_comm, interface, policy_name, action) :
+
+def close_cli_session(cli_comm):
     """
-    Sending each command twice due to bug in acl show function
+    Close cleanly a pexpect session to a DUT CLI shell (in the cpm)
+    Input : Spawned pexpect process (cli_comm)
+    Return value : None
     """
-    logging.info(f"Policy : {policy_name}, action: {action}")
-    if interface == "ctrl-plane" :
+    logging.info(f"Closing CLI connection")
+    cli_comm.close()
+
+def get_show_counter (cli_comm, interface, interface_type, policy_name, rule_name) :
+    """
+    Reading ACL counter according to interface, policy name and action
+    Input : cli_comm - 
+            interface - Physical interface such as "4"
+            interface_type - Enumeration InterfaceType, values "CTRL_PLANE", "X_ETH"
+            policy_name - String
+            rule_name : String
+    Caveat :Sending each command twice due to bug in acl show function
+    """
+    logging.info(f"Policy : {policy_name}, Rule name: {rule_name} on type: {interface_type}, interface {interface}")
+    if interface_type is InterfaceType.CTRL_PLANE :
         command = f'show ctrl-plane acl detail'
         expect_string = '.*MODE.*'
-    else :
+    elif interface_type is InterfaceType.X_ETH:
         command = f'show acl interface detail x-eth0/0/{interface}'
         expect_string = '.*INTERFACE.*'
+    else :
+        raise Exception (f"Unrecognized interface type: {interface_type}")
 
+    # First counter read. Disregard results
     logging.info(f"Send command 1st: \"{command}\"")
     cli_comm.sendline(command)
     logging.info(f"Expecting: {expect_string}")
     cli_comm.expect(expect_string)
     response = cli_comm.after
-    
+
+    # Second counter read. This is the actual value. Need to read twice due to bug
     logging.info(f"Send command 2nd: \"{command}\"")
     cli_comm.sendline(command)
     logging.info(f"Expecting: {expect_string}")
     cli_comm.expect(expect_string)
     response = cli_comm.after
 
-    counter = _parse_show_counter(response, policy_name, action)
+    counter = _parse_show_counter(response, policy_name, rule_name)
     logging.info(f"counter value: {counter}")
 
     return counter
@@ -146,13 +168,13 @@ def _test_acl_show_counter() :
         egress  canary_pol_deny_src_ip  r1            deny    40
                                         rule-default  permit  317
     """
-    counter = _parse_show_counter(show_acl_ifc_detail, "canary_pol_deny_src_ip", "deny")
+    counter = _parse_show_counter(show_acl_ifc_detail, "canary_pol_deny_src_ip", "r1")
     print (counter)
-    counter = _parse_show_counter(show_acl_ifc_detail, "canary_pol_deny_src_ip", "permit")
+    counter = _parse_show_counter(show_acl_ifc_detail, "canary_pol_deny_src_ip", "rule-default")
     print (counter)
-    counter = _parse_show_counter(show_acl_ctrl_plane_detail, "canary_pol_deny_src_ip", "deny")
+    counter = _parse_show_counter(show_acl_ctrl_plane_detail, "canary_pol_deny_src_ip", "r1")
     print (counter)
-    counter = _parse_show_counter(show_acl_ctrl_plane_detail, "canary_pol_deny_src_ip", "permit")
+    counter = _parse_show_counter(show_acl_ctrl_plane_detail, "canary_pol_deny_src_ip", "rule-default")
     print (counter)
 
 def _test_basic() :
@@ -169,13 +191,25 @@ def _test_basic() :
     _print_acl_interface_details(cli_comm, 23)
 
 if __name__ == "__main__" :
-    DEVICE_NUMBER = '3010'
-    cli_comm = open_cli_session(DEVICE_NUMBER)
+    # Read globals from ini file
+    import configparser
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    dut_number = constants['GENERAL']['DUT']
+    physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+
+    # Open CLI connection
+    cli_comm = open_cli_session(dut_number)
+
+    # Read counters
+    counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "r1")
+    print (f"Rule: r1, GOT : {counter}")
+
+    counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "rule-default")
+    print (f"Rule: default, GOT : {counter}")
 
     # _test_basic()
     # _test_acl_show_counter()
-
-    counter = get_show_counter (cli_comm, "ctrl-plane", "canary_pol_deny_src_ip", "permit")
-    print (f"GOT : {counter}")
 
     logging.info("Finished")
