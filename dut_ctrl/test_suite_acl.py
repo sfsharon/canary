@@ -105,7 +105,6 @@ def _inject_frame_and_verify_counter(ssh_client,
     # 2. Read ACL counter value
     counter_prev = int(cli_control.get_show_counter(cli_client, physical_port_num, interface_type, policy_name, rule_name))
                                                                                         
-
     # 3. Inject frame into BCM - Run remote command in DUT
     command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
     rv = _run_remote_shell_cmd (ssh_client, command)
@@ -193,11 +192,11 @@ def cli_client():
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    DUT_NUMBER = constants['GENERAL']['DUT']
+    DUT_NUMBER = constants['GENERAL']['DUT_NUM']
 
-    cli_comm = cli_control.open_cli_session(DUT_NUMBER)
+    cli_comm = cli_control.open_cpm_session(DUT_NUMBER)
     yield cli_comm
-    cli_control.close_cli_session(cli_comm)
+    cli_control.close_cpm_session(cli_comm)
 
 @pytest.fixture(scope="session")
 def netconf_client():
@@ -235,17 +234,25 @@ def ssh_client():
     """
     logging.info("Fixture: ssh_client")
     
+    import cli_control
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    host = constants['COMM']['HOST_ONL']
+    host_onl = constants['COMM']['HOST_ONL']
+    dut_num = constants['GENERAL']['DUT_NUM']
 
+    # Reset the Managament interface 10.3.XX.10 (host_onl) by sending "dhclient ma1" 
+    # and CPM interface (10.3.XX.1) by sending ping to vrf management, using the serial server 
+    cli_control.reset_mng_and_cpm_connections(dut_num)
+
+    # Connecting over SSH and Managament interface 10.3.XX.10 (host_onl) to the device
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(hostname=host, username="root", password="root")
+    client.connect(hostname=host_onl, username="root", password="root")
 
-    logging.info(f"Connecting to host {host}")
-    client.connect(hostname=host, username="root", password="root")
+    logging.info(f"Connecting to host_onl {host_onl}")
+    client.connect(hostname=host_onl, username="root", password="root")
     yield client
     client.close()
 
@@ -291,9 +298,9 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
     3. Attach new policy to interface physical_port_num
        (Using Netconf)
     """
-    import netconf_comm
-
     logging.info("test_TC00_Setup_Environment")
+    
+    import netconf_comm
 
     # Read globals from ini file
     # ----------------------------------------------------------

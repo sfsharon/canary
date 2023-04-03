@@ -39,43 +39,145 @@ def _parse_show_counter(cli_response, policy_name, rule_name) :
             else :
                 raise Exception (f"Unrecognized Rule name: {rule_name}")
 
+def _reset_serial_server_connection(device_number) :
+    """
+    Issue from Dev machine command "exa-il01-dl-3010-sc"
+    exa-il01-dl-3010-sc is aliased to `ts-cl 10.1.10.253 hw-lab-gw-1 lab lab 91'
+        Output :
+            sharonf@DEV107:~$ exa-il01-dl-3010-sc
+            spawn telnet 10.1.10.253
+            Trying 10.1.10.253...
+            Connected to 10.1.10.253.
+            Escape character is '^]'.
+
+            hw-lab-gw-1#c
+            Done
+    """    
+    logging.info("Disconnect the serial server from the DUT")
+    import subprocess
+    command = f'ts-cl 10.1.{device_number[-2:]}.253 hw-lab-gw-1 lab lab 91' 
+    logging.info(f"Command: {command}")
+
+    process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+    output, error = process.communicate()
+    logging.info(f"_disconnect_dut_serial_connection output:\n{output.decode()}")
+
+
 # ***************************************************************************************
 # External API functions
 # ***************************************************************************************
-def open_cli_session(device_number):
+
+def reset_mng_and_cpm_connections(device_number):
+    """
+    1. Reset serial server connection, so that if another client is connected, it would be kicked out.
+    2. Send "dhclient ma1" on ONL CLI for fixing management communication to IP 10.3.XX.10 (needed for DUT CLI commands),
+    3. Send "ping vrf management 10.3.XX.254" in the DUT CLI for fixing CPM communication to IP 10.3.XX.1 (needed for Netconf),
+       using the serial server connection
+    Input : Device number, such as 3010
+    Return value : None
+
+    exa-il01-dl-3010-s  is aliased to `telnet 10.1.10.253 2091'
+        Output :
+            sharonf@DEV107:~$ exa-il01-dl-3010-s
+                Trying 10.1.10.253...
+                Connected to 10.1.10.253.
+                Escape character is '^]'.
+
+                root@localhost:~#
+    """
+    SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
+    CPM_PROMPT  = f"R{device_number}"
+    ONL_PROMPT  = f"root@localhost:~#"
+    TIMEOUT     = 20
+    cli_comm    = None
+
+    logging.info("*** Begin reset_mng_and_cpm_connections")
+
+    # 1. Disconnect other client if connected to serial server 
+    _reset_serial_server_connection(device_number)
+
+    try :
+        # 2. Telnet into the machine using the serial server and send "dhclient ma1"
+        logging.info(f"Opening ONL CLI connection to device {device_number}")
+        cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
+                                   encoding='utf-8',
+                                   timeout=TIMEOUT)
+
+        # Wait for the password prompt and enter the password
+        logging.info("Waiting for Serial server prompt")
+        cli_comm.expect('.*Escape character.*')
+
+        logging.info("send \\n")
+        cli_comm.sendline('')
+
+        logging.info(f"Expecting connection with DUT")
+        i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*'])
+        if i == 1:
+            logging.info("Exiting ssc")
+            cli_comm.sendline('exit')
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')
+
+        logging.info("Sending \"dhclient ma1\"")
+        cli_comm.sendline('dhclient ma1')
+        logging.info(f"Expecting prompt ONL prompt: {ONL_PROMPT}")
+        cli_comm.expect(f'.*{ONL_PROMPT}.*')
+
+        # 3. Send ping to vrf management
+        logging.info("Connect to DUT CLI (ssc)")
+        cli_comm.sendline('ssc')
+        cli_comm.expect('.*password:.*')
+        logging.info("send password")
+        cli_comm.sendline('admin')
+        logging.info(f"Expecting CPM prompt: {CPM_PROMPT}")
+        cli_comm.expect(f'.*{CPM_PROMPT}.*')
+
+        ping_command = f'ping vrf management 10.3.{device_number[-2:]}.254'
+        logging.info(f"Sending ping command: \"{ping_command}\"")
+        cli_comm.sendline(f'ping vrf management 10.3.{device_number[-2:]}.254')
+        logging.info(f"Expecting end of ping")
+        cli_comm.expect([f'.*rtt min/avg/max/mdev.*', f'.*{CPM_PROMPT}.*'])
+    except pexpect.exceptions.TIMEOUT :
+        logging.error(f"Waiting for CLI response exceeded {TIMEOUT} seconds")
+    finally:
+        logging.info("Closing ONL CLI connection")
+        cli_comm.close()
+
+    logging.info("*** End reset_mng_and_cpm_connections")
+
+def open_cpm_session(device_number):
     """
     Open a pexpect session to a DUT CLI shell (in the cpm)
     Input : Device number, such as 3010
     Return value : Spawned pexpect process (cli_comm)
     """
     
-    CPM_ADDRESS = f"10.3.{device_number[2:4]}.1"
-    PROMPT      = f"R{device_number}"
+    CPM_ADDRESS = f"10.3.{device_number[-2:]}.1"
+    CPM_PROMPT  = f"R{device_number}"
     TIMEOUT     = 10
     cli_comm    = None
 
     try :
         # SSH into the machine
-        logging.info(f"Opening CLI connection to device {device_number}")
+        logging.info(f"Opening CPM CLI connection to device {device_number}")
         cli_comm = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
                               encoding='utf-8',
                               timeout=TIMEOUT)
 
         # Wait for the password prompt and enter the password
-        logging.info("Wait for password prompt")
+        logging.info("Waiting for password prompt")
         cli_comm.expect('password:')
 
         logging.info("send password")
         cli_comm.sendline('admin')
 
-        logging.info(f"Expecting prompt {PROMPT}")
-        cli_comm.expect(f'.*{PROMPT}.*')
+        logging.info(f"Expecting CPM prompt: {CPM_PROMPT}")
+        cli_comm.expect(f'.*{CPM_PROMPT}.*')
     except pexpect.exceptions.TIMEOUT :
         logging.error(f"Cannot connect to device {device_number}")
 
     return cli_comm   
 
-def close_cli_session(cli_comm):
+def close_cpm_session(cli_comm):
     """
     Close cleanly a pexpect session to a DUT CLI shell (in the cpm)
     Input : Spawned pexpect process (cli_comm)
@@ -179,7 +281,7 @@ def _test_acl_show_counter() :
 
 def _test_basic() :
     DEVICE_NUMBER = '3010'
-    cli_comm = open_cli_session(DEVICE_NUMBER)
+    cli_comm = open_cpm_session(DEVICE_NUMBER)
 
     # SYSTEM SHOW
     # -------------------
@@ -190,17 +292,17 @@ def _test_basic() :
     _print_acl_interface_details(cli_comm, 23)
     _print_acl_interface_details(cli_comm, 23)
 
-if __name__ == "__main__" :
+def _test_get_counters() :
     # Read globals from ini file
     import configparser
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    dut_number = constants['GENERAL']['DUT']
+    dut_number = constants['GENERAL']['DUT_NUM']
     physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
     canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
 
     # Open CLI connection
-    cli_comm = open_cli_session(dut_number)
+    cli_comm = open_cpm_session(dut_number)
 
     # Read counters
     counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "r1")
@@ -209,7 +311,11 @@ if __name__ == "__main__" :
     counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "rule-default")
     print (f"Rule: default, GOT : {counter}")
 
+if __name__ == "__main__" :
+    # _test_get_counters()
     # _test_basic()
     # _test_acl_show_counter()
+
+    reset_mng_and_cpm_connections('3010')
 
     logging.info("Finished")
