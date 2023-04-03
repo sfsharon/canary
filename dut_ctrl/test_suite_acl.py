@@ -3,10 +3,8 @@ Pytest runner code
 """
 import pytest
 import configparser
-
 import paramiko
 import logging
-import snmp_comm
 from common_enums import InterfaceOp, AclCtrlPlaneType, FrameType, InterfaceType
 
 logging.basicConfig(
@@ -18,6 +16,14 @@ logging.basicConfig(
 # ***************************************************************************************
 # Helper functions
 # ***************************************************************************************
+def _find_formal_build_full_name(ssh_client, build_num) :
+    """
+    Perform an "ls" on the folder with formal builds, and return the full file name for installation    
+    """
+    build_path = '/auto/exaware/build-slave/images/develop'
+    command = 'ls -l ' + build_path
+    _run_remote_shell_cmd(ssh_client, command)
+
 def _remote_exists(sftp, path):
     """ 
     Check if a remote path exists
@@ -28,7 +34,7 @@ def _remote_exists(sftp, path):
     except IOError:
         return False
 
-def _run_remote_shell_cmd(ssh_object, cmd_string) :
+def _run_remote_shell_cmd(ssh_client, cmd_string) :
     """
     Run remote shell command
     """
@@ -40,7 +46,7 @@ def _run_remote_shell_cmd(ssh_object, cmd_string) :
         # Execute a command on the remote server and get the output
         logging.info(f"Running remote command:\n\"{cmd_string}\"")
 
-        ssh_stdin, ssh_stdout, ssh_stderr = ssh_object.exec_command(cmd_string)
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(cmd_string)
 
         exit_status = ssh_stdout.channel.recv_exit_status()
         if exit_status == 0 :
@@ -251,9 +257,10 @@ def ssh_client():
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(hostname=host_onl, username="root", password="root")
 
-    logging.info(f"Connecting to host_onl {host_onl}")
+    logging.info(f"Opening connection to host_onl {host_onl}")
     client.connect(hostname=host_onl, username="root", password="root")
     yield client
+    logging.info(f"Closing connection to host_onl {host_onl}")
     client.close()
 
 @pytest.fixture(scope="session")
@@ -583,3 +590,8 @@ def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
+
+def test_TC99_testing_the_tests(ssh_client) :
+    logging.info ("test_TC99_testing_the_tests")
+    full_path = _find_formal_build_full_name(ssh_client, '500')
+    print (full_path)

@@ -15,6 +15,16 @@ import pexpect
 # ***************************************************************************************
 # Module helper functions
 # ***************************************************************************************
+def _print_system_mod (cli_comm) :
+    logging.info("Send command \"show sys mod\"")
+    cli_comm.sendline('show sys mod')
+
+    logging.info("Expecting: \"BOX/SLOT\"")
+    cli_comm.expect('.*BOX/SLOT.*')
+
+    logging.info("Received results")
+    print(cli_comm.after)
+
 def _parse_show_counter(cli_response, policy_name, rule_name) :
     """
         Parse input from DUT for acl show command, and return the counter value
@@ -228,16 +238,6 @@ def get_show_counter (cli_comm, interface, interface_type, policy_name, rule_nam
 # ***************************************************************************************
 # UT
 # ***************************************************************************************
-def _print_system_mod (cli_comm) :
-    logging.info("Send command \"show sys mod\"")
-    cli_comm.sendline('show sys mod')
-
-    logging.info("Expecting: \"BOX/SLOT\"")
-    cli_comm.expect('.*BOX/SLOT.*')
-
-    logging.info("Received results")
-    print(cli_comm.after)
-
 def _print_acl_interface_details(cli_comm, interface_number) :
     """show acl interface detail x-eth0/0/1"""
     command = f'show acl interface detail x-eth0/0/{str(interface_number)}'
