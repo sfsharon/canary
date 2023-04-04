@@ -2,8 +2,9 @@
 Pytest runner code
 """
 import pytest
-import configparser
-import paramiko
+
+from fixtures import ssh_client, _run_remote_shell_cmd
+
 import logging
 from common_enums import InterfaceOp, AclCtrlPlaneType, FrameType, InterfaceType
 
@@ -26,34 +27,7 @@ def _remote_exists(sftp, path):
     except IOError:
         return False
 
-def _run_remote_shell_cmd(ssh_client, cmd_string) :
-    """
-    Run remote shell command
-    """
-    import socket
 
-    exit_status = None
-
-    try :
-        # Execute a command on the remote server and get the output
-        logging.info(f"Running remote command:\n\"{cmd_string}\"")
-
-        ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(cmd_string)
-
-        exit_status = ssh_stdout.channel.recv_exit_status()
-        if exit_status == 0 :
-            logging.info(f"Remote command succeeded")
-        else :
-            logging.info(f"Command failed with exit status: {exit_status}")
-
-    except paramiko.SSHException as e:
-        # Handle SSH exception
-        logging.error(f'SSH error: {e}')
-    except socket.error as e:
-        # Handle socket error
-        logging.error(f'Network error: {e}')
-
-    return exit_status
 
 def _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,
@@ -226,36 +200,6 @@ def netconf_client():
     dut_conn.close()
 
 @pytest.fixture(scope="session")
-def ssh_client():
-    """
-    Connect to DUT using SSH client
-    """
-    logging.info("Fixture: ssh_client")
-    
-    import cli_control
-
-    # Read globals from ini file
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
-    host_onl = constants['COMM']['HOST_ONL']
-    dut_num = constants['GENERAL']['DUT_NUM']
-
-    # Reset the Managament interface 10.3.XX.10 (host_onl) by sending "dhclient ma1" in ONL CLI,
-    # and CPM interface (10.3.XX.1) by sending ping to vrf management in the DUT CLI, using the serial server 
-    cli_control.reset_mng_and_cpm_connections(dut_num)
-
-    # Connecting over SSH and Managament interface 10.3.XX.10 (host_onl) to the device
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(hostname=host_onl, username="root", password="root")
-
-    logging.info(f"Opening connection to host_onl {host_onl}")
-    client.connect(hostname=host_onl, username="root", password="root")
-    yield client
-    logging.info(f"Closing connection to host_onl {host_onl}")
-    client.close()
-
-@pytest.fixture(scope="session")
 def setup_dut(ssh_client):
     """
     Move testing files into workdir in DUT.
@@ -263,10 +207,12 @@ def setup_dut(ssh_client):
     """
     logging.info("Fixture: setup_dut")
 
+    import configparser
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    workdir     = constants['DUT_ENV']['WORKDIR']
+    workdir   = constants['DUT_ENV']['WORKDIR']
 
     copy_file_list = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
@@ -299,6 +245,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
     """
     logging.info("test_TC00_Setup_Environment")
     
+    import configparser
     import netconf_comm
 
     # Read globals from ini file
@@ -345,7 +292,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test deny on acl rule R1 :
         1. Attach policy to interface
@@ -356,6 +303,8 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     """
     logging.info("test_TC01_rule_r1_acl_in")
     
+    import configparser
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
@@ -394,12 +343,14 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test permit on acl default rule
     """
     logging.info("test_TC02_default_rule_acl_in")
     
+    import configparser
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
@@ -438,12 +389,14 @@ def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
     logging.info("test_TC03_acl_rule_r1_ctrl_plane_egress")
     
+    import configparser
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
@@ -486,12 +439,14 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule default on acl ctrl-plane egress
     """
     logging.info("test_TC04_acl_rule_default_ctrl_plane_egress")
     
+    import configparser
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
@@ -534,12 +489,14 @@ def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
     logging.info("test_TC05_acl_rule_r1_ctrl_plane_nni_ingress")
     
+    import configparser
+
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')

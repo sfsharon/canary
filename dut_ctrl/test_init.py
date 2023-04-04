@@ -8,24 +8,11 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
+from fixtures import ssh_client, _run_local_shell_cmd, _run_remote_shell_cmd
 
 # ***************************************************************************************
 # Helper functions
 # ***************************************************************************************
-def _run_local_shell_cmd(cmd_string) :
-    """
-    Run local shell command
-    """
-
-    import subprocess
-
-    result = subprocess.run(cmd_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    rc = result.returncode
-    output = result.stdout.decode()
-    logging.debug(f"Return code: {rc}\nOutput:\n{output}")
-
-    return rc, output
-
 def _link_build_to_onie_installer(device_num, device_type, build_num) :
     """
     Soft link onie-installer for device_num to official build number build_num
@@ -35,7 +22,7 @@ def _link_build_to_onie_installer(device_num, device_type, build_num) :
     
     # 1. Get name of build build_num
     build_path = '/auto/exaware/build-slave/images/develop'
-    command = 'ls -l ' + build_path
+    command = f'ls -l {build_path}'
     rc, output = _run_local_shell_cmd(command)
     if rc != 0 :
         raise Exception (f"Error: {rc} from: {command}")
@@ -60,6 +47,26 @@ def _link_build_to_onie_installer(device_num, device_type, build_num) :
 # ***************************************************************************************
 # Test Case #0 - Installing formal build
 # ***************************************************************************************
-def test_TC00_installing_build() :
-    logging.info ("test_TC99_testing_the_tests")
-    _link_build_to_onie_installer('3010', 'dl', '522')
+def test_init_TC00_installing_build(ssh_client) :
+    logging.info ("test_init_TC00_installing_build")
+
+    # import cli_control
+    import configparser
+    
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    device_type = constants['GENERAL']['DUT_TYPE']
+    dut_num = constants['GENERAL']['DUT_NUM']
+    
+    # 1. Prepare install soft link to point to the required build file
+    _link_build_to_onie_installer(dut_num, device_type, build_num = '539')
+
+    # Set install mode
+    command = "onl-onie-boot-mode install"
+    rv = _run_remote_shell_cmd (ssh_client, command)
+    if rv != 0 :
+        raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
+    command = "reboot"
+    _run_remote_shell_cmd (ssh_client, command)
+    
