@@ -16,34 +16,6 @@ logging.basicConfig(
 # ***************************************************************************************
 # Helper functions
 # ***************************************************************************************
-def _link_build_to_onie_installer(device_num, device_type, build_num) :
-    """
-    Soft link onie-installer for device_num to official build number build_num
-    """
-
-    import os
-    import cli_control
-    
-    # 1. Get name of build build_num
-    build_path = '/auto/exaware/build-slave/images/develop'
-    command = 'ls -l ' + build_path
-    rc, output = _run_local_shell_cmd(command)
-    if rc != 0 :
-        raise Exception (f"Error: {rc} from: {command}")
-
-    build_file_name = cli_control._get_install_file_name(output, build_num)
-    logging.info(f"Build: {build_num}, File name: {build_file_name}")
-
-    # 2. Link formal build to device device_num onie-installer
-    device_install_path = f'/home/tftp/onie/exa-il01-{device_type}-30{device_num[-2:]}'
-    onie_installer_full_path = os.path.join(device_install_path, 'onie-installer')
-    build_file_full_path = os.path.join(build_path, build_file_name)
-
-    command = f'ln -sf {build_file_full_path} {onie_installer_full_path}'
-    rc, output = _run_local_shell_cmd(command)
-    if rc != 0 :
-        raise Exception (f"Error: {rc} from: {command}")
-
 def _remote_exists(sftp, path):
     """ 
     Check if a remote path exists
@@ -53,22 +25,6 @@ def _remote_exists(sftp, path):
         return True
     except IOError:
         return False
-
-def _run_local_shell_cmd(cmd_string) :
-    """
-    Run local shell command
-    """
-
-    import subprocess
-
-    result = subprocess.run(cmd_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    rc = result.returncode
-    output = result.stdout.decode()
-    logging.debug(f"Return code: {rc}\nOutput:\n{output}")
-
-    return rc, output
-
-
 
 def _run_remote_shell_cmd(ssh_client, cmd_string) :
     """
@@ -284,8 +240,8 @@ def ssh_client():
     host_onl = constants['COMM']['HOST_ONL']
     dut_num = constants['GENERAL']['DUT_NUM']
 
-    # Reset the Managament interface 10.3.XX.10 (host_onl) by sending "dhclient ma1" 
-    # and CPM interface (10.3.XX.1) by sending ping to vrf management, using the serial server 
+    # Reset the Managament interface 10.3.XX.10 (host_onl) by sending "dhclient ma1" in ONL CLI,
+    # and CPM interface (10.3.XX.1) by sending ping to vrf management in the DUT CLI, using the serial server 
     cli_control.reset_mng_and_cpm_connections(dut_num)
 
     # Connecting over SSH and Managament interface 10.3.XX.10 (host_onl) to the device
@@ -625,9 +581,4 @@ def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli
     rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
-
-
-def test_TC99_testing_the_tests() :
-    logging.info ("test_TC99_testing_the_tests")
-    _link_build_to_onie_installer('3010', 'dl', '510')
 
