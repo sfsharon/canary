@@ -25,6 +25,25 @@ def _print_system_mod (cli_comm) :
     logging.info("Received results")
     print(cli_comm.after)
 
+def _get_install_file_name(cli_response, build_number) :
+    """
+    Input: cli_response - Output from command "ls" for build files 
+           build_number -
+    Return value : String, file name of build build_number
+    """
+    required_file_name = None
+
+    normalised_input = [line.lstrip() for line in cli_response.splitlines()]
+    for i, line in enumerate(normalised_input) :
+        build_name = (line.split())[-1]
+        if build_name.startswith('onie-installer-') and \
+           build_name.endswith(f"b{build_number}") :
+            required_file_name = build_name            
+            break
+
+    return required_file_name
+
+    
 def _parse_show_counter(cli_response, policy_name, rule_name) :
     """
         Parse input from DUT for acl show command, and return the counter value
@@ -311,11 +330,27 @@ def _test_get_counters() :
     counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "rule-default")
     print (f"Rule: default, GOT : {counter}")
 
+def _test_get_install_file_name():
+    input = """-rw-r--r-- 1 buildslave sw-all        33 Mar 30 00:19 onie-installer-vdevelop.8.0.0-2023-03-29-21-18-14-l-nl-g03b2807b-b536.bsc
+-rw-r--r-- 1 buildslave sw-all 734982823 Apr  2 00:19 onie-installer-vdevelop.8.0.0-2023-04-01-21-18-06-l-nl-g03b2807b-b537
+-rw-r--r-- 1 buildslave sw-all        33 Apr  2 00:19 onie-installer-vdevelop.8.0.0-2023-04-01-21-18-06-l-nl-g03b2807b-b537.bsc
+-rw-r--r-- 1 buildslave sw-all 734982823 Apr  3 00:19 onie-installer-vdevelop.8.0.0-2023-04-02-21-18-22-l-nl-g03b2807b-b538
+-rw-r--r-- 1 buildslave sw-all        33 Apr  3 00:19 onie-installer-vdevelop.8.0.0-2023-04-02-21-18-22-l-nl-g03b2807b-b538.bsc
+-rw-r--r-- 1 buildslave sw-all 734982823 Apr  4 00:19 onie-installer-vdevelop.8.0.0-2023-04-03-21-18-19-l-nl-g03b2807b-b539
+-rw-r--r-- 1 buildslave sw-all        33 Apr  4 00:19 onie-installer-vdevelop.8.0.0-2023-04-03-21-18-19-l-nl-g03b2807b-b539.bsc
+-rwxrwxrwx 1 buildslave sw-all 700854925 Jan  5 00:17 vbox-vdevelop.8.0.0-2023-01-04-22-15-24-l-nl-g9c0dd54c-b480.tar.gz
+-rwxrwxrwx 1 buildslave sw-all        33 Jan  5 00:17 vbox-vdevelop.8.0.0-2023-01-04-22-15-24-l-nl-g9c0dd54c-b480.tar.gz.bsc
+-rwxrwxrwx 1 buildslave sw-all 700857989 Jan  8 00:18 vbox-vdevelop.8.0.0-2023-01-07-22-15-27-l-nl-g9c0dd54c-b481.tar.gz
+-rwxrwxrwx 1 buildslave sw-all        33 Jan  8 00:18 vbox-vdevelop.8.0.0-2023-01-07-22-15-27-l-nl-g9c0dd54c-b481.tar.gz.bsc"""
+
+    _get_install_file_name(input, '538')
+
 if __name__ == "__main__" :
     # _test_get_counters()
     # _test_basic()
     # _test_acl_show_counter()
+    # reset_mng_and_cpm_connections('3010')
 
-    reset_mng_and_cpm_connections('3010')
+    _test_get_install_file_name()
 
     logging.info("Finished")
