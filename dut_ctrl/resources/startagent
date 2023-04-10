@@ -1,0 +1,909 @@
+#!/bin/bash
+# Execute cpm or lc image inside kvm
+
+fail() { echo "${0##*/}: $*" >&2; exit 1; }
+set -e
+
+HERE="${0%/*}"
+test -d "$HERE" -a "$HERE/${0##*/}" -ef "$0"
+
+# First time: this variable is 1 if we run
+# 'startvbox' for the first time, and 0 otherwise
+FIRST_TIME=0
+
+# If we run the first time, there will no startvbox.log file
+[[ -f /vbox/var/log/startvbox.log ]] || FIRST_TIME=1
+
+##################################
+#                                #
+#        Init functions          #
+#                                #
+##################################
+
+# Create log and run directories if are not existing
+init_dirs() {
+	[[ -d /vbox/var/log ]] || mkdir -p /vbox/var/log
+	[[ -d /vbox/var/run ]] || mkdir -p /vbox/var/run
+}
+
+# Redirect stderr to stdput for using tee
+# Also, here we prepare everything related to the logging
+init_logs () {
+	exec 2>&1
+	exec >> /vbox/var/log/startvbox.log
+}
+
+init_interfaces() {
+	/sbin/ifdown br0
+	sleep 1
+	/sbin/ifconfig ma1 down
+	sleep 1
+	#sleep 3
+}
+
+# First parameter is exit status; all the following will be printed and sent to log
+# Use it like this:
+# fail_log -1 "this is an error message"
+# fail_log -2 "an error: status is " $var " but expected 0"
+fail_log() {
+	st=$1
+	shift
+	logger -p local0.err "${0##*/}: $@"
+	/bin/echo "${0##*/}: $@"
+	exit ${st}
+}
+
+# Init global variables
+init_globals() {
+	BUILDMODE=$(grep 'Build mode' /vbox/cpm_image/root/opt/compass/build_param.txt | cut -d '=' -f 2 | sed 's#  *##')
+	[[ -z "${BUILDMODE}" ]] && fail_log -5 "error: can't determine build mode - exiting ..."
+	export BUILDMODE
+
+	SW_VER=$(grep 'Software version' /vbox/cpm_image/root/opt/compass/build_param.txt | cut -d '=' -f 2 | sed 's#  *##')
+	[[ -z "${SW_VER}" ]] && fail_log -5 "error: can't determine software version - exiting ..."
+
+	BCMRM=/vbox/lc_image/root/opt/compass/bin/bcmrm
+	[[ -x "$BCMRM" ]] || fail_log -1 "bcmrm executable not found"
+
+	PLATCONFIG=/vbox/local/platform/byplatform
+	[[ -d "$PLATCONFIG" ]] || fail_log -1 "No byplatform found"
+
+	PATH=$PATH:$HERE
+
+	# check that this version was build for Delta SW and is executing on Delta HW
+	# find what HW are we using
+	onieplatform=""
+
+	ONIE_PLATFORM=$(cat /etc/onl/platform)
+	[[ -z "$ONIE_PLATFORM" ]] && fail_log -1 "Cannot find ONIE machine id"
+	[[ -e "$PLATCONFIG/$ONIE_PLATFORM" ]] || fail_log -1 "No configuration found for ${ONIE_PLATFORM}"
+
+	${PLATCONFIG}/${ONIE_PLATFORM}/init.sh dmasize=32M
+	#
+	#
+	# find what SW verion are we runnnig - Delta / Edgecore support should be marked in the SW_VER string (dl /ec)
+	ONLPD="onlpd -o"
+	eval $ONLPD > platform_into.txt
+	ONIE_BASEMAC=$(awk '/MAC:/ {print $NF}' platform_into.txt)
+	ONIE_NUMMACS=$(awk '/MAC Range:/ {print $NF}' platform_into.txt)
+	ONIE_SERIAL=$(awk '/Serial Number:/ {print $NF}' platform_into.txt)
+	if [ -z "$ONIE_SERIAL" ]; then
+		ONLPD="onie-shell -c onie-syseeprom"
+		eval $ONLPD > platform_into.txt
+		ONIE_BASEMAC=$(awk '/Base MAC/ {print $NF}' platform_into.txt)
+		ONIE_NUMMACS=$(awk '/MAC Addresses/ {print $NF}' platform_into.txt)
+		ONIE_SERIAL=$(awk '/Part Number/ {print $NF}' platform_into.txt)
+		[[ -z "$ONIE_SERIAL" ]] && fail_log -6 "error: can't determine serial number - exiting ..."
+	fi
+
+	# onl.platform.current.OnlPlatform().onie_info.MAC_RANGE is broken!
+	MACSERIALS=/vbox/local/share/machine-serials.txt
+
+	SW_UPDATER_PORT=1123
+	IFACE_BR_LOCA_IP='169.254.255.3'
+}
+
+# Update card type in CPM and LC
+init_cardtype() {
+	CARD_TYPE=$(cat ${PLATCONFIG}/${ONIE_PLATFORM}/card_type)
+	echo "CARD TYPE = $CARD_TYPE"
+	echo "Updating CPM /etc/card_type"
+	echo ${CARD_TYPE} > /vbox/cpm_image/root/etc/card_type
+
+	#if [ -e /vbox/cpm_image/root/opt/compass/common_confd/db/lc_init.xml ] ; then
+	#	echo "Updating CPM lc_init.xml with card_type:"
+	#	CARD_TYPE=${CARD_TYPE} bash -c '/bin/echo 6s\/\>\.\*\<\/\>${CARD_TYPE}\<\/' > /tmp/lc_init.sed
+	#	/bin/sed -i -f /tmp/lc_init.sed /vbox/cpm_image/root/opt/compass/common_confd/db/lc_init.xml
+	#	cp -v /vbox/cpm_image/root/opt/compass/common_confd/db/lc_init.xml /vbox/cpm_image/root/opt/compass/db/
+	#fi
+
+	echo "Updating LC /etc/card_type:"
+	echo ${CARD_TYPE} > /vbox/lc_image/root/etc/card_type
+	sync; sync; sync
+}
+
+# Test available memory and prepare memory related variables
+# used later to start VMs
+init_memory_variables() {
+    local platfrom="$1"
+
+    case "${platfrom}" in
+        x86-64-accton-as7316-26xb-r0)
+            CPMMEM=6144
+            LCMEM=3584
+            CPMCPUSMP=4
+            LCCPUSMP=2
+            return 0
+            ;;
+	x86-64-accton-as7315-27xb-r0)
+            CPMMEM=6144
+            LCMEM=3584
+            CPMCPUSMP=2
+            LCCPUSMP=1
+            return 0
+            ;;
+        x86-64-accton-as5916-54xks-r0)
+            CPMMEM=10240
+            LCMEM=4096
+            CPMCPUSMP=4
+            LCCPUSMP=4
+            return 0
+            ;;
+    esac
+        
+	# assign memory to virtual machines according to total memory found
+	MEMTOTAL=$( dmidecode -t memory | grep 'Size.*MB' | awk '{s+=$2} END {print s/1024}' || echo 0 )
+
+	# less than 8GB
+	[[ ${MEMTOTAL} -lt 8 ]] && fail_log -1 "error: not enough memory - found total installed memory of ${MEMTOTAL} GB, at least 8GB required"
+
+	# 8GB or more
+	DEFFAULTCPMMEM=6000
+	DEFAULTLCMEM=2000
+	if [ ${MEMTOTAL} -ge 12 ]; then # 12GB or more
+		DEFFAULTCPMMEM=8000
+		DEFAULTLCMEM=3000
+	fi
+
+	if [ ${MEMTOTAL} -ge 16 ]; then # 16GB or more
+		DEFFAULTCPMMEM=10000
+		DEFAULTLCMEM=4000
+	fi
+	/bin/echo "Found total memory of ${MEMTOTAL} GB"
+
+	#
+	# if parameters are assigned from environment override default setting
+	# Total CPM memory
+	[ -z "${CPMMEM}" ] && CPMMEM=${DEFFAULTCPMMEM}
+	# Total LC memory
+	[ -z "${LCMEM}" ] && LCMEM=${DEFAULTLCMEM}
+	# Total CPM cpus
+	[ -z "${CPMCPUSMP}" ] && CPMCPUSMP=4
+	# Total CPM cpus
+	[ -z "${LCCPUSMP}" ] && LCCPUSMP=4
+	# Total machines CPUs
+	[ -z "${ONLCPUSMP}" ] && ONLCPUSMP=4
+}
+
+#
+# enable system profiling:
+# load profile file is exist
+init_profiler() {
+	if [ -e /vbox/sys_profile_params ]; then
+		/bin/echo "found profile params file: loading ..."
+		logger -p local0.info "found profile params file: loading ..."
+		set -x
+		. /vbox/sys_profile_params
+		set +x
+		# move to save file - if reprofile is need - mv the .sav file to /vbox/sys_profile_params
+		mv -f /vbox/sys_profile_params /vbox/sys_profile_params.sav
+	fi
+
+	#
+	[ -z "${SYS_PROFILE_PIPE}" ] && SYS_PROFILE_PIPE=/tmp/sys_profile_pipe
+	if [ ! -z "${SYS_PROFILE_PARAMS}" ]; then
+		params_num=$(/bin/echo -n ${SYS_PROFILE_PARAMS} | awk -F ',' '{print NF}')
+		[[ "${params_num}" -ne "3" ]] && fail_log -1 "error: wrong number of arguments in SYS_PROFILE_PARAMS = ${SYS_PROFILE_PARAMS}"
+
+		SYS_PROFILE_CMDLINE="SYS_PROFILE_PARAMS=${SYS_PROFILE_PARAMS}"
+	fi
+}
+
+##################################
+#                                #
+#        Waiting functions       #
+#                                #
+##################################
+
+# Wait up to N seconds until an interface is started
+# Example:
+# wait_interface_start 10 br0
+wait_interface_start() {
+	local wait_seconds=$1
+	local interface=$2
+	local counter=0
+
+	# If there is no interface durectory in /sys/class/net/,
+	# we wait until it appears
+	while [ $((wait_seconds--)) -gt 0 -a ! -d /sys/class/net/${interface} ]
+	do
+		sleep 1
+		(( counter++ ))
+	done
+
+	# If we have no more time budget - return
+	[ ${wait_seconds} -eq 0 ] && return
+
+	# Now looks like the interface is up; however, we also should test its operational state
+	local st=$(cat /sys/class/net/${interface}/operstate)
+	while [ $(( wait_seconds-- )) -gt 0 -a "${st}" != "up" ]
+	do
+		sleep 1
+		(( counter++ ))
+		st=$(cat /sys/class/net/${interface}/operstate)
+	done
+
+	/bin/echo "Waited interface ${interface} start ${counter} seconds, status = ${st}"
+}
+
+# Wait up to N seconds until an interface is stopped
+# Example:
+# wait_interface_stop 10 br0
+wait_interface_stop() {
+	local wait_seconds=$1
+	local interface=$2
+
+	local counter=0
+	local st="down"
+
+	# If the interface entry is exists - read its operational state
+	# If it doesn't exist, we assume the interface is down
+	[[ -e /sys/class/net/${interface} ]] && st=$(cat /sys/class/net/${interface}/operstate)
+
+	while [ $((wait_seconds--)) -gt 0 -a "${st}" != "down" ]
+	do
+		(( counter++ ))
+		sleep 1
+		# If the interface entry still exists, read its state; else assume it is down
+		[[ -e /sys/class/net/${interface} ]] && st=$(cat /sys/class/net/${interface}/operstate) || st="down"
+	done
+
+	/bin/echo "Waited interface ${interface} stop ${counter} seconds, status=${st}"
+}
+
+# Wait up to N seconds until a process start
+# Example:
+# wait_process_start 10 lsrv
+wait_process_start() {
+	local wait_seconds=$1
+	local process=$2
+	local counter=0
+	while [ $((wait_seconds--)) -gt 0 -a $(pgrep ${process} 2>&1>/dev/null) -ne 0 ]
+	do
+		(( counter++ ))
+		sleep 1
+	done
+
+	/bin/echo "Waited process ${process} start ${counter} seconds"
+}
+
+# Wait until license server is started
+wait_license() {
+
+	# If no license installed don't even start
+	[[ ! -f /vbox/basher/lsrv ]] && return
+
+	# Wait up to 10 second until license server is started
+	wait_process_start 10 lsrv
+}
+
+# Wait until VM start is finished
+wait_vms() {
+
+	# TODO: Name of VM to wait
+	local _vm=$1
+	# We need to wait VM only on first boot.
+	# The reason: on the first boot 'ldconfig' should be completed
+	# inside of LC before we start BCMRM container,
+	# otherwise BCMRM fails since a library not found
+	[[ ${FIRST_TIME} -eq 0 ]] && return
+
+	# TODO: This is a hack; we should remake it and run ldconfig on image creation
+	while [ ! -f /vbox/lc_image/root/etc/ld.so.cache.finished ]
+	do
+		sleep 1
+	done
+}
+
+##################################
+#                                #
+#        Main functions          #
+#                                #
+##################################
+
+ifexists() {
+   test -e /sys/class/net/$1/ifindex && ip link del dev $1
+   test -e /sys/class/net/$1
+}
+
+# Create br0 interface configuration file
+create_br0_config() {
+	# bring up br0 without dhcp now
+	local netint=/etc/network/interfaces.d
+	local br0_conf=$netint/br0
+	mkdir -p $netint # creates at the first time/the fresh intall
+	>  $br0_conf
+	if [ "${BUILDMODE}" == "RELEASE" ]; then
+		echo "auto br0" 					>>  $br0_conf
+		echo "   iface br0 inet static" 	>>  $br0_conf
+		echo "   bridge_ports ma1"			>>  $br0_conf
+		echo "   address 0.0.0.0"			>>  $br0_conf
+		echo "   bridge_str off" 			>>  $br0_conf
+		echo "   bridge_fd 0" 				>>  $br0_conf
+		echo "   bridge_waitport 0" 		>>  $br0_conf
+	else
+		echo "auto br0" 					>>  $br0_conf
+		echo "   iface br0 inet dhcp" 		>>  $br0_conf
+		echo "   bridge_ports ma1"			>>  $br0_conf
+		echo "   bridge_str off" 			>>  $br0_conf
+		echo "   bridge_fd 0" 				>>  $br0_conf
+		echo "   bridge_waitport 0" 		>>  $br0_conf
+	fi
+}
+
+netinit() {
+	modprobe bridge
+
+	echo =====================================
+	local lMsg0="ONIE BASE MAC address = ${ONIE_BASEMAC}"
+	/bin/echo $lMsg0
+	logger -p local0.info $lMsg0
+
+	# this code manages the issue with WB 3006 and 3014; both of theme have
+	# malfunctioned EEPROM
+	if [ "${ONIE_BASEMAC}" = "00:00:00:00:00:00" ] ; then
+		ONIE_SERIAL=exa-il01-ec-3006
+	fi
+
+	# set locally administered MAC for every WB machine in our lab
+	# TODO: we need a way how to deal with MACs in the field
+	macrandom_semi
+
+	local lMsg1="A new BASE MAC address : ${ONIE_BASEMAC}, Number of MACs : ${ONIE_NUMMACS}"
+	/bin/echo $lMsg1
+	logger -p local0.err $lMsg1
+
+	set +e
+
+	# whitebox gets whitebox MAC + 1
+	MA1MAC=$(int2mac $(( $(mac2int $ONIE_BASEMAC) + 1 )) )
+	[ -e /sys/class/net/br0 ] && /sbin/ifdown br0
+	wait_interface_stop 3 br0
+
+	[ -e /sys/class/net/ma1 ] && /sbin/ifconfig ma1 down
+	wait_interface_stop 3 ma1
+
+	/sbin/ifconfig ma1 hw ether $MA1MAC
+
+	# Create br0 interface configuration
+	create_br0_config
+
+	/sbin/ifup br0 &
+	wait_interface_start 10 br0
+
+	/sbin/ifconfig ma1 up &
+	wait_interface_start 2 br0
+
+	set -e
+
+	echo  ============================================
+	test -e /sys/class/net/br0 || {
+		echo "Requires br0 bridge for VM networking"
+		exit 1
+	}
+
+	ifexists brtipc || {
+		ip link add dev brtipc type bridge
+		ip link set dev brtipc up
+		ip addr add dev brtipc 1.1.1.10/16
+	}
+
+	ifexists brloca || {
+		ip link add dev brloca type bridge
+		ip link set dev brloca up
+		ip addr add dev brloca 169.254.255.3/24
+	}
+
+	for i in 71 72 81 82 91 92; do
+		ifexists tap$i && continue
+		case $i in
+			7?) master=br0;;
+			8?) master=brtipc;;
+			9?) master=brloca;;
+		esac
+		ip tuntap add dev tap$i group 20000 mode tap
+		ip link set dev tap$i master $master
+		ip link set dev tap$i promisc on up
+	done
+
+	udevadm settle
+
+	set +e
+	# set -x
+	$PLATCONFIG/$ONIE_PLATFORM/reset
+
+	#lt22-start
+	/vbox/local/bin/tipc-config -netid=7
+	/vbox/local/bin/tipc-config -addr="1.1.1025"
+	/vbox/local/bin/tipc-config -be="eth:brtipc"
+	/vbox/local/bin/tipc-config -lw=broadcast-link/150
+	/vbox/local/bin/tipc-config -lw=1.1.1025:brtipc-1.1.1024:int0/150
+	/vbox/local/bin/tipc-config -lw=1.1.1025:brtipc-1.1.1280:int0/150
+	#lt22-end
+}
+
+kvminit() {
+	modprobe kvm_intel || fail "Error loading kvm module"
+	modprobe vhost_net || fail "Error loading vhost module"
+	test -c /dev/kvm -a -c /dev/vhost-net || fail "no /dev/kvm "
+	#command -v qemu-system-x86_64 >/dev/null || fail "requires qemu-system-x86"
+}
+
+startvms() {
+	boot_image "$1"
+	test -n "$2" && boot_image "$2"
+}
+
+# this function assings a locally administrated MACs from prepared
+# file /vbox/local/share/machine-serials.txt
+macrandom_semi() {
+	[ -z "$ONIE_SERIAL" ] && ONIE_SERIAL="XXX" # if we'll get another bad eeprom (than 3006)
+	# we'll use macrandom function
+	# search serial file
+	onie_basemac=$(grep $ONIE_SERIAL $MACSERIALS| awk '{print $2}')
+	# if a serial mac pair is found use the info from the file (there some problem that why it is there)
+	if [ ! -z "${onie_basemac}" ]; then
+		local lMachine=$(grep $ONIE_SERIAL $MACSERIALS|awk '{print $1}')
+		local lComment=$(grep $ONIE_SERIAL $MACSERIALS|awk '{print $4}')
+		local lMsg="Machine $lMachine ($ONIE_SERIAL) got a locally administrated MAC address $ONIE_BASEMAC"
+		logger -p local0.err $lMsg
+		echo $lMsg
+		ONIE_BASEMAC=${onie_basemac}
+	fi
+}
+
+# This function mounts the 'platform' directory into
+# a VM image / container.
+# It works both for VMs (CPM / LC) and containers (BCMRM)
+# Argument: path to the VM / container running directory including finishing '/root',
+# like /path/to/cpm_image/root
+image_mount_platform()
+{
+	local _img=$1
+
+	# We received a path to the VM / container image root.
+	# It must exist
+	[[ ! -d "${_img}" ]] && fail_log -1  "The image directory '${_img}' doesn't exist"
+
+	# Paths inside of the VM
+	# All platform mounted by this path in VM / container
+	local _plat="opt/compass/bcm/sdk"
+
+	# This (current) platform mounted by this path in VM / container
+	local _this="opt/compass/bcm/myplatform"
+
+	# Normilized full paths of the target directories
+	# This is how we see the path from ONL
+	local _plat_full="${_img}/${_plat}"
+	local _this_full="${_img}/${_this}"
+
+	# SEB: Create the target directory in the VM file systems
+
+	# Target directory of all platforms
+	mkdir -p ${_plat_full}
+
+	# Target directory of this machine platform
+	mkdir -p ${_this_full}
+
+	# We should test that the platform is not mounted.
+	# We don't want to mount it the second time.
+	mount | grep "${_img}" | grep  "${_plat}"
+
+	if [ $? -eq 0 ]
+	then
+		echo "/vbox/local/platform already is mounted on ${_plat_full} ; it's normal"
+		#return
+	else
+		# No, it is not mounted; mount it
+		mount --bind /vbox/local/platform ${_plat_full}
+		[[ $? -ne 0 ]] && fail_log -1 "Can not mount /vbox/local/platform to ${_plat_full}"
+	fi
+
+	# Check if the ${ONIE_PLATFORM} directory exists
+
+	if [ ! -d /vbox/local/platform/byplatform/${ONIE_PLATFORM} ]
+	then
+		fail_log 14 "No such a directory: /vbox/local/platform/byplatform/${ONIE_PLATFORM}"
+	fi
+
+	mount | grep -v grep | grep ${_this_full}
+	if [ $? -eq 0 ]
+        then
+		fail_log 14 "Look like the directory already mounted, but should not be ${_this_full}"
+	else 
+		mount --bind /vbox/local/platform/byplatform/${ONIE_PLATFORM} ${_this_full}
+		[[ $? -ne 0 ]] && fail_log -1 "Can't mount: /vbox/local/platform/byplatform/${ONIE_PLATFORM}"
+	fi
+}
+
+boot_image() (
+	test -e $1/root/platform-release && set -- $1/root/
+	test -e $1/platform-release || fail "${1} does not appear to be a compass image"
+
+	# magic grep - for images where VMware detection has not been fixed yet
+	mkdir -p $1/opt/compass/bin
+	printf '#!/bin/dash\n test "xVMware" = "x$2" && exit 1; exec /bin/grep "$@"' > $1/opt/compass/bin/grep
+	chmod +x $1/opt/compass/bin/grep
+
+	if test "" = "${1##*cpm*}" -o -e "${1}/opt/compass/bin/nsmd"; then
+		card=1
+		session=cpm
+		MEM=${CPMMEM}
+		SMP=${CPMCPUSMP}
+		/bin/echo "Starting CPM virtual machine with on ${SMP} cores and ${MEM} Mg memory "
+		logger -p local0.info "Starting CPM virtual machine with on ${SMP} cores and ${MEM} Mg memory"
+	else
+		card=2
+		session=lc
+		MEM=${LCMEM}
+		SMP=${LCCPUSMP}
+		/bin/echo "Starting LC virtual machine with on ${SMP} cores and ${MEM} Mg memory"
+		logger -p local0.info "Starting LC virtual machine with on ${SMP} cores and ${MEM} Mg memory"
+		echo 169.254.255.3 >$1/opt/compass/config/bcm_ipv4_server.conf
+	fi
+	IF0=tap7$card
+	IFTIPC=tap8$card
+	IFLOCA=tap9$card
+
+	: ${INITRD:=${1}boot/initrd-cmp.03.01.00}
+	: ${KERNEL:=${1}boot/vmlinuz-cmp.03.01.00}
+
+	test -e /sys/class/net/$IF0/address || fail "Cannot find tap device $IF0"
+
+	if [ "$card" = "1" ] ; then # CPM gets whitebox MAC
+		IF0MAC=$ONIE_BASEMAC
+	else # LC gets whitebox + 2
+		IF0MAC=$(int2mac $(( $(mac2int $ONIE_BASEMAC) + $card )) )
+	fi
+
+	BASEMAC=$(int2mac $(( $(mac2int $ONIE_BASEMAC) + 3 )) )
+	NUMMACS=$((ONIE_NUMMACS - 3))
+
+	PREINIT_EMBED=$(IF0MAC=$IF0MAC card=$card preinit | embedinit) || exit 1
+
+	CMD="/vbox/local/bin/qemu-system-x86_64
+
+		-chardev socket,id=mymon,server,nowait,telnet,host=127.0.0.10$card,port=4444
+		-mon mymon
+		-smp ${SMP} -enable-kvm -cpu host
+		-nographic
+
+		-chardev stdio,id=myserial,signal=off,logfile=$1/../console.log
+		-device isa-serial,chardev=myserial
+
+		-kernel $KERNEL
+		-initrd $INITRD
+
+		-m $MEM
+		-balloon virtio
+
+		-netdev type=tap,id=iftipc,ifname=$IFTIPC,script=no,downscript=no
+		-device vmxnet3,netdev=iftipc
+
+		-netdev type=user,id=ifusr,hostfwd=tcp:127.0.0.10$card:10022-:22,guestfwd=tcp:10.0.2.100:1234-cmd:updateguestip
+		-device vmxnet3,netdev=ifusr
+
+		-netdev type=tap,id=ifext,ifname=$IF0,script=no,downscript=no
+		-device vmxnet3,netdev=ifext,mac=$IF0MAC
+
+		-netdev type=tap,vhost=on,id=ifloca,ifname=$IFLOCA,script=no,downscript=no
+		-device vmxnet3,netdev=ifloca
+
+		-virtfs local,path=${1},mount_tag=newroot,security_model=none
+	"
+	KCMDLINE="quiet bmode=nfs basemac=$BASEMAC nummacs=$NUMMACS console=ttyS0 update_daemon_address=$IFACE_BR_LOCA_IP update_daemon_port=$SW_UPDATER_PORT $PREINIT_EMBED $SYS_PROFILE_CMDLINE"
+#	/bin/echo "starting Vm with kernel command line: ${KCMDLINE}"
+	logger -p local0.info "start Vm with kernel command line: ${KCMDLINE}"
+	set +e
+	image_mount_platform ${1}
+	set -e
+	screen -S $session -dm $CMD -append "$KCMDLINE"
+	#$CMD -append "$KCMDLINE"
+)
+
+mac2int() {
+	local x i m=:$1
+	for i in 1 2 3 4 5 6; do
+		x=${m##*:}$x
+		m=${m%:??}
+	done
+	echo $(( 0x$x ))
+}
+
+int2mac() {
+	local x i n=$1
+	for i in 1 2 3 4 5 6; do
+		x=$(printf "%02x:%s" $(( n&0xFF )) $x)
+		n=$(( n>>8 ))
+	done
+	echo ${x%:}
+}
+
+#############################################################################
+# The script below runs on emulated kernel during initrd phase
+# it is encoded into the kernel command line
+#############################################################################
+
+preinit() { cat <<EOF.PREINIT
+
+mount -t proc proc proc
+mount -t sysfs sys sys
+nameif tmp1 $IF0MAC
+nameif tmp2 52:54:00:12:34:58
+nameif tmp3 52:54:00:12:34:56
+nameif tmp4 52:54:00:12:34:57
+nameif loc0 $IF0MAC				# eth0 needle will be created on top of this
+nameif eth1 52:54:00:12:34:58	# intentionally block loc0 -> eth1
+nameif int0 52:54:00:12:34:56
+nameif int1 52:54:00:12:34:57
+ifconfig int1 10.0.2.15 netmask 255.255.255.0 up
+ifconfig int0 1.1.1.1 netmask 255.255.255.0 up
+ifconfig eth0 up
+ifconfig eth1 169.254.255.$card up
+
+mount newroot /newroot -t 9p -o trans=virtio,version=9p2000.L,cache=loose
+
+mkdir -p /newroot/dev /newroot/proc
+mount -t tmpfs tmpfs /newroot/dev
+mount -t proc proc /newroot/proc/ -o nosuid,nodev,noexec,relatime
+mknod -m 622 /newroot/dev/console c 5 1
+mknod -m 666 /newroot/dev/null c 1 3
+
+exec switch_root /newroot ${INIT:-/sbin/init}
+
+EOF.PREINIT
+	  }
+
+
+embedinit() (
+	#!/bin/sh
+	# Encode shell script in compact form as kernel command line argument
+	# Append output to your kernel command line. The initrd should have busybox with symlinks set up.
+
+	tty >/dev/null && { echo "Usage: ${0##*/} <script"; exit 1; }
+
+	# Decoder stub without spaces or equals sign.
+	#  Note: contains $, so must be properly quoted or escaped.
+	decoder1='eval$IFS"`echo${IFS}'
+	decoder2='|base64$IFS-d|gunzip`"'
+
+	code="$(cat)"
+	for pad1 in "" " " "${IFS%?}" "${IFS#?}" "$IFS" "  " "${IFS%?} " " ${IFS#?} " "$IFS$IFS"; do
+		for pad2 in "" " " "${IFS%?}" "${IFS#?}" "$IFS" ; do
+			encoded=$(printf "%s" "$code$pad1$pad2" | gzip -n -9 | base64 | awk '{ORS=""; print}')
+			test "${encoded%=}" = "${encoded}" && { printf "rdinit=/bin/sh -c %s%s%s\n" "$decoder1" "$encoded" "$decoder2" && exit 0; }
+		done
+	done
+	fail_log -1 "Failed finding encoding without = suffix."
+)
+
+# This function transforms card_type.json to card_type.soc
+# for the current platform defined in/etc/onl/platfrom
+prepare_card_type() {
+	local plat_dir="/vbox/local/platform/byplatform/$ONIE_PLATFORM/"
+	local infile="${plat_dir}/card_type.json"
+	local outfile="${plat_dir}/card_type.soc"
+
+	/vbox/local/bin/card_type_to_soc.py -i ${infile} -o ${outfile}
+	[[ $? -ne 0 ]] && fail_log "An error in: /vbox/local/bin/card_type_to_soc.py -i ${infile} -o ${outfile}"
+}
+
+# Mount system directories (proc, sys, dev) to lc_image
+bcmrm_image_mount_dirs() {
+
+	# Don't mount if already mounted
+	mountpoint -q /vbox/lc_image/root/proc || mount -t proc proc /vbox/lc_image/root/proc
+	mountpoint -q /vbox/lc_image/root/sys  || mount -t sysfs sys /vbox/lc_image/root/sys
+	mountpoint -q /vbox/lc_image/root/dev  ||  mount -o bind /dev /vbox/lc_image/root/dev/
+}
+
+startrm() (
+	set +e
+
+	# Prepare card_type.soc
+	prepare_card_type
+
+	# Mount system directories to lc_image before start bcmrm container
+	bcmrm_image_mount_dirs
+
+	# SEB: Probably we don't need it since we have done it when started LC
+	# image_mount_platform /vbox/lc_image/root
+
+	# SHF - CANARY INSTRUMENTATION NEEDS SCREEN IN LAB MODE
+	# if [ "${BUILDMODE}" != "DEVELOPER" ]; then
+	# 	logger -p local0.info "executing bcmrm: daemon --noconfig bcmrm_loader.sh $ONIE_PLATFORM $ONIE_BASEMAC ${BUILDMODE}"
+	# 	/bin/echo "executing bcmrm: daemon --noconfig bcmrm_loader.sh $ONIE_PLATFORM $ONIE_BASEMAC ${BUILDMODE}"
+	# 	daemon --noconfig bcmrm_loader.sh $ONIE_PLATFORM $ONIE_BASEMAC ${BUILDMODE} &> /var/log/bcmrm_loader_startvbox.txt
+	# else
+		logger -p local0.info "executing bcmrm: chroot /vbox/lc_image/root/ /opt/compass/bin/bcmrm_load.sh $ONIE_PLATFORM $ONIE_BASEMAC ${BUILDMODE}"
+		/bin/echo "executing bcmrm: chroot /vbox/lc_image/root/ /opt/compass/bin/bcmrm_load.sh $ONIE_PLATFORM $ONIE_BASEMAC ${BUILDMODE}"
+		screen -L -S bcmrm -dm /bin/bash -c "chroot /vbox/lc_image/root/ /opt/compass/bin/bcmrm_load.sh $ONIE_PLATFORM $ONIE_BASEMAC ${BUILDMODE}"
+	# fi
+)
+
+startntpwatcher()
+{
+	# Do not start ntp-watch.sh if already an instance is running
+	COUNT=$(ps -ax | grep ntp-watch.sh  | grep -v grep | wc -l)
+	if [ ${COUNT} -gt 0 ]
+	then
+		echo NTP WATCH IS ALREADY RUNNING
+	else
+		# Start NTP process watchdog: restart if is down
+		nohup /vbox/local/bin/ntp-watch.sh 30 > /vbox/local/bin/ntp-watch.sh.log &
+	fi
+}
+
+# Start CPU cores passed as arguments
+start_cpus()
+{
+	/bin/echo "Starting CPU cores $@"
+	for a in $@
+	do
+		# If exists CPU ${a} AND there is 'online' entry in this CPU controls
+		if [ -d /sys/devices/system/cpu/cpu${a} -a -f /sys/devices/system/cpu/cpu${a}/online ]
+		then
+			echo 1 > /sys/devices/system/cpu/cpu${a}/online
+			echo "CPU[${a}]: turned on"
+		else
+			# ERROR: Either no such a CPU core or no 'online' entry for this CPU core
+			[[ ! -d /sys/devices/system/cpu/cpu${a} ]] && echo "Doesn't exist CPU core ${a}"
+			[[ -d /sys/devices/system/cpu/cpu${a} ]] && echo "CPU core ${a} can not be turned on"
+		fi
+	done
+}
+
+# Stop CPU cores passed as arguments
+stop_cpus()
+{
+	/bin/echo "Stopping CPU cores $@"
+	for a in $@
+	do
+		# If exists CPU ${a} AND there is 'online' entry in this CPU controls
+		if [ -d /sys/devices/system/cpu/cpu${a} -a -f /sys/devices/system/cpu/cpu${a}/online ]
+		then
+			# Stop it
+			echo 0 > /sys/devices/system/cpu/cpu${a}/online
+			echo "CPU[${a}]: turned off"
+		else
+			# ERROR: Either no such a CPU core or no 'online' entry for this CPU core
+			[[ ! -d /sys/devices/system/cpu/cpu${a} ]] && echo "Doesn't exist CPU core ${a}"
+			[[ -d /sys/devices/system/cpu/cpu${a} ]] && echo "CPU core ${a} can not be turned off"
+		fi
+	done
+}
+
+# If asked to enable profiling, this function care about it
+start_profiling()
+{
+	if [ -z "${SYS_PROFILE_PARAMS}" ]; then
+		/bin/echo "Starting vms without profile params (defualt) ..."
+		return
+	fi
+
+	set -e
+	/bin/echo "stating profiling script with the following params: ${SYS_PROFILE_PARAMS}"
+	sed -i.bak 's#ENABLED="false"#ENABLED="true"#' /etc/default/sysstat
+	/etc/init.d/sysstat restart
+	/bin/rm -f ${SYS_PROFILE_PIPE}
+	/bin/mknod ${SYS_PROFILE_PIPE} p
+	SYS_PROFILE_PARAMS=${SYS_PROFILE_PARAMS} profile.sh 2>&1 > ${SYS_PROFILE_PIPE} &
+	profile_log_file=/vbox/sys_profile-`date +%F_%T`.log.gz
+	/bin/echo "profile logfile: ${profile_log_file}"
+	cat ${SYS_PROFILE_PIPE} | gzip -c > ${profile_log_file} &
+	/bin/echo "Starting virtual machines with on ${ONLCPUSMP} cores..:"
+
+	# Start all CPUs
+	start_cpus 1 2 3 4 5 6 7
+	/bin/echo "Starting virtual machines with on ${ONLCPUSMP} cores..:"
+
+	local totalcores=$(nproc)
+	/bin/echo "Found total of ${totalcores} cores:"
+
+	# Construct CPU set to stop
+	local to_stop=""
+	case ${totalcores} in
+		4)
+			[[ ${ONLCPUSMP} -eq "2" ]] && to_stop="1 3"
+			[[ ${ONLCPUSMP} -eq "3" ]] && to_stop="1"
+			;;
+		8)
+			[[ ${ONLCPUSMP} -eq "2" ]] && to_stop="1 3 4 5 6 7"
+			[[ ${ONLCPUSMP} -eq "4" ]] && to_stop="1 3 5 7"
+			;;
+		*)
+			/bin/echo "don't know what to with ${ONLCPUSMP} cores... - do nothing"
+			return
+	esac
+
+	# Here we have ready to use set of CPU cores to stop
+	/bin/echo "Turn off cores: ${to_stop}"
+	stop_cpus ${to_stop}
+}
+
+
+stop_oomserver() {
+	/vbox/local/bin/oomserver --terminate
+}
+
+start_oomserver() {
+	# listen on two server ports, one for iagent, second for bcmrm
+	# old args:  oomserver --terminate --daemon --ia_addr 169.254.255.3:4242 --bcmrm_addr 169.254.255.3:4243 --mutex --platform ${ONIE_PLATFORM}
+	local ia_address="169.254.255.3"
+	local ia_port="4242"
+	local bcmrm_addr="169.254.255.3"
+	local bcmrm_port="4243"
+	local oom_log="/vbox/var/log/oomserver.log"
+
+	/vbox/local/bin/oomserver --verbose --daemon --log-fil=${oom_log} --ia-addr=${ia_address}:${ia_port} --bcmrm-addr=${bcmrm_addr}:${bcmrm_port} --mutex --platform=${ONIE_PLATFORM}
+}
+
+start_broker() {
+	screen -S broker -dm /vbox/local/bin/sflow_broker/load_broker.sh ${ONIE_BASEMAC}
+
+}
+
+stop_broker() {
+	kill -9 `cat /var/run/sflow_broker.pid`
+}
+
+startvbox() {
+	test $# = 0 && set -- /vbox/lc_image /vbox/cpm_image
+	wait_license
+	netinit
+	kvminit
+
+	start_profiling
+
+	# NOTE: sometimes this function exits with exit code 0
+	startntpwatcher
+
+	startvms "$@"
+
+	# Restarte oom_server
+	stop_oomserver ; start_oomserver
+
+	# restart sflow broker
+	stop_broker ; start_broker
+
+	wait_vms
+	echo "Starting RM"
+	startrm
+}
+
+# Run a function with same name this script was called:
+
+# SEB: This is a relic from previous implementations.
+# $(a=$(command -v "${0##*/}"); a=${a##*/*}; echo ${a:-:}) "$@"
+
+# Run init parts
+init_dirs
+init_logs
+init_interfaces
+init_globals
+init_cardtype
+init_memory_variables ${ONIE_PLATFORM}
+init_profiler
+
+# Run VMs and containers
+startvbox

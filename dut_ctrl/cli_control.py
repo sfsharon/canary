@@ -89,12 +89,17 @@ def _reset_serial_server_connection(device_number) :
 
     process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
-    logging.info(f"_disconnect_dut_serial_connection output:\n{output.decode()}")
-
 
 # ***************************************************************************************
 # External API functions
 # ***************************************************************************************
+def get_time() :
+    """
+    Returns elapsed time string from a given time in seconds
+    """
+    import time
+    current_time = time.strftime("%H:%M:%S", time.localtime())
+    return current_time
 
 def reset_mng_and_cpm_connections(device_number):
     """
@@ -140,12 +145,19 @@ def reset_mng_and_cpm_connections(device_number):
         cli_comm.sendline('')
 
         logging.info(f"Expecting connection with DUT")
-        i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*'])
-        if i == 1:
-            logging.info("Exiting ssc")
+        i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*', '.*localhost login:.*'])
+        if i == 0:
+            logging.info("ONL CLI Shell. Doing nothing")
+        elif i == 1:
+            logging.info("DUT CLI Shell. Exiting")
             cli_comm.sendline('exit')
             cli_comm.expect(f'.*{ONL_PROMPT}.*')
-
+        elif i == 2:
+            logging.info("New CLI shell. Performing logging")
+            cli_comm.sendline('root')
+            cli_comm.expect(f'.*Password:.*')
+            cli_comm.sendline('root')
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')            
         logging.info("Sending \"dhclient ma1\"")
         cli_comm.sendline('dhclient ma1')
         logging.info(f"Expecting prompt ONL prompt: {ONL_PROMPT}")
@@ -166,12 +178,142 @@ def reset_mng_and_cpm_connections(device_number):
         logging.info(f"Expecting end of ping")
         cli_comm.expect([f'.*rtt min/avg/max/mdev.*', f'.*{CPM_PROMPT}.*'])
     except pexpect.exceptions.TIMEOUT :
-        logging.error(f"Waiting for CLI response exceeded {TIMEOUT} seconds")
+        raise Exception(f"Waiting for CLI response exceeded {TIMEOUT} seconds")
     finally:
         logging.info("Closing ONL CLI connection")
         cli_comm.close()
 
     logging.info("*** End reset_mng_and_cpm_connections")
+
+def reboot_dut(device_number, is_set_install_mode = False):
+    """
+    """
+    SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
+    CPM_PROMPT  = f"R{device_number}"
+    ONL_PROMPT  = f"root@localhost:~#"
+    TIMEOUT     = 5
+    cli_comm    = None
+
+    logging.info(f"{get_time()} Begin set_install_mode_and_reboot_dut")
+
+    # 1. Disconnect other client if connected to serial server 
+    _reset_serial_server_connection(device_number)
+
+    try :
+        # 2. Telnet into the machine using the serial server
+        logging.info(f"{get_time()} Opening ONL CLI connection to device {device_number}")
+        cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
+                                   encoding='utf-8',
+                                   timeout=TIMEOUT,
+                                   codec_errors='ignore')
+
+        # Wait for the password prompt and enter the password
+        logging.info(f"{get_time()} Waiting for Serial server prompt")
+        cli_comm.expect('.*Escape character.*')
+
+        logging.info(f"{get_time()} send \\n")
+        cli_comm.sendline('')
+
+        logging.info(f"{get_time()} Expecting connection with DUT")
+        i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*', '.*localhost login:.*'])
+        if i == 0:
+            logging.info(f"{get_time()} ONL CLI Shell. Doing nothing")
+        elif i == 1:
+            logging.info(f"{get_time()} DUT CLI Shell. Exiting")
+            cli_comm.sendline('exit')
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')
+        elif i == 2:
+            logging.info(f"{get_time()} New CLI shell. Performing logging")
+            cli_comm.sendline('root')
+            cli_comm.expect(f'.*Password:.*')
+            cli_comm.sendline('root')
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')       
+
+        if is_set_install_mode == True :
+            # Setting boot mode to install
+            command = "onl-onie-boot-mode install"
+            expected_response = "The system will boot into ONIE install mode at the next restart."
+            logging.info(f"{get_time()} Sending \"{command}\"")
+            cli_comm.sendline(command)
+            logging.info(f"{get_time()} Expecting: \"{expected_response}\"")
+            cli_comm.expect(f'.*{expected_response}.*')
+            
+        # Rebooting
+        command = "reboot"
+        logging.info(f"{get_time()} Sending \"{command}\"")
+        cli_comm.sendline(command)
+    except pexpect.exceptions.TIMEOUT :
+        raise Exception(f"{get_time()} Waiting for CLI response exceeded {TIMEOUT} seconds")
+    finally:
+        logging.info(f"{get_time()} Closing ONL CLI connection")
+        cli_comm.close()
+
+    logging.info(f"{get_time()} End reset_mng_and_cpm_connections")
+
+def add_dev_machine_ssh_key_to_dut(device_number):
+    """
+    """
+    SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
+    CPM_PROMPT  = f"R{device_number}"
+    ONL_PROMPT  = f"root@localhost:~#"
+    TIMEOUT     = 5
+    cli_comm    = None
+
+    logging.info(f"{get_time()} Badd_dev_machine_ssh_key_to_dut")
+
+    # 1. Disconnect other client if connected to serial server 
+    _reset_serial_server_connection(device_number)
+
+    try :
+        # 2. Telnet into the machine using the serial server
+        logging.info(f"{get_time()} Opening ONL CLI connection to device {device_number}")
+        cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
+                                   encoding='utf-8',
+                                   timeout=TIMEOUT,
+                                   codec_errors='ignore')
+
+        # Wait for the password prompt and enter the password
+        logging.info(f"{get_time()} Waiting for Serial server prompt")
+        cli_comm.expect('.*Escape character.*')
+
+        logging.info(f"{get_time()} send \\n")
+        cli_comm.sendline('')
+
+        logging.info(f"{get_time()} Expecting connection with DUT")
+        i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*', '.*localhost login:.*'])
+        if i == 0:
+            logging.info(f"{get_time()} ONL CLI Shell. Doing nothing")
+        elif i == 1:
+            logging.info(f"{get_time()} DUT CLI Shell. Exiting")
+            cli_comm.sendline('exit')
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')
+        elif i == 2:
+            logging.info(f"{get_time()} New CLI shell. Performing logging")
+            cli_comm.sendline('root')
+            cli_comm.expect(f'.*Password:.*')
+            cli_comm.sendline('root')
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')       
+
+        # Creating ~/.ssh directory
+        command = "mkdir ~/.ssh"
+        expected_response = ONL_PROMPT
+        logging.info(f"{get_time()} Sending \"{command}\"")
+        cli_comm.sendline(command)
+        logging.info(f"{get_time()} Expecting: \"{expected_response}\"")
+        cli_comm.expect(f'.*{expected_response}.*')
+
+        # Creating ~/.ssh/authorized_keys file
+        command = "echo \"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDZ/GJExXwzrbbBc/IZf4SWiLTDb6KHCGq0noyybCegEJ77Je6/rKjEnqRPRPaMdyulycrprYDfDz97OO0uwCdd7Axv0g6NunLzSbMdY5kz2cGxUYZgqub/eYLj10S2ulmeQTqCPOZ3uyO+4LCR72M3qlrjnQNkYd2oSkIF13INWhvuJ7e2FQvBqr6CvkVAiP1fVbgd5vNp4mhwTXgBEJkLWxpnFq3knNNAnod4dgNozpZQ8Ln8RaLLq3esIifyyMFMv7WzApM2CD69OwhSvCDXgdKsp5+5sFmbywGGgPxhhK3twMPcVgFderhXK+Si69YZfqdZPSoeiESLX1hvM/NBHX2E3sQDNFxeLBk0YgRR7uUohZnViRQyY9N/+YsBZHvcjAxvu+OUA2qiEw+PTUKbrORBY5KAwGYCqZGmkrtOAw3PnntBNfcTyA8gtvloYMnFBYIb4UT6DcUdRcGCHbABaTRYjf1e1NIvZPgE+ijWaAFNj03lDfyXAFU6+eaGeiE= sharonf@DEV107\" >> ~/.ssh/authorized_keys"
+        expected_response = ONL_PROMPT
+        logging.info(f"{get_time()} Sending \"{command}\"")
+        cli_comm.sendline(command)
+        logging.info(f"{get_time()} Expecting: \"{expected_response}\"")
+        cli_comm.expect(f'.*{expected_response}.*')
+    except pexpect.exceptions.TIMEOUT :
+        raise Exception(f"{get_time()} Waiting for CLI response exceeded {TIMEOUT} seconds")
+    finally:
+        logging.info(f"{get_time()} Closing ONL CLI connection")
+        cli_comm.close()
 
 def open_cpm_session(device_number):
     """
@@ -189,8 +331,8 @@ def open_cpm_session(device_number):
         # SSH into the machine
         logging.info(f"Opening CPM CLI connection to device {device_number}")
         cli_comm = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
-                              encoding='utf-8',
-                              timeout=TIMEOUT)
+                                  encoding='utf-8',
+                                  timeout=TIMEOUT)
 
         # Wait for the password prompt and enter the password
         logging.info("Waiting for password prompt")

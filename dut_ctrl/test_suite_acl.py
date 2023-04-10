@@ -3,7 +3,7 @@ Pytest runner code
 """
 import pytest
 
-from fixtures import ssh_client, _run_remote_shell_cmd
+from fixtures import ssh_client_scope_module, run_remote_shell_cmd, copy_files_from_local_to_dut
 
 import logging
 from common_enums import InterfaceOp, AclCtrlPlaneType, FrameType, InterfaceType
@@ -27,9 +27,7 @@ def _remote_exists(sftp, path):
     except IOError:
         return False
 
-
-
-def _inject_frame_and_verify_counter(ssh_client, 
+def _inject_frame_and_verify_counter(ssh_client_scope_module, 
                                      cli_client,
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx, 
@@ -44,17 +42,21 @@ def _inject_frame_and_verify_counter(ssh_client,
         1. Create packet
         2. Read ACL counter value 
            (Using CLI)
-        3. Inject packet into bcm's port that will trigger the deny rule in ACL policy 
+        3. Inject packet into bcm's port that will trigger a rule in ACL policy 
            (Using BCM Diagnostic shell "TX" command)
-        4. Read ACL counter value again, and assert that it incremented the value of packets injected 
+        4. Read ACL counter value again, and assert that it incremented by exactly the value of packets injected 
            (Using CLI)
 
-        Input : ssh_client      - 
+        Input : ssh_client_scope_module      - 
                 cli_client      - 
                 src_ip, dst_ip, dst_mac - 
                 num_of_tx       - 
                 frame_type  - Enumeration for different frames to be transmitted. L2_L3 or ICMP frames
                 interface_type - Enumeration InterfaceType, values "CTRL_PLANE", "X_ETH"
+                workdir - 
+                physical_port_num - 
+                policy_name - 
+                rule_name - 
         Return value : None
     """
     import packet_creator
@@ -62,7 +64,6 @@ def _inject_frame_and_verify_counter(ssh_client,
 
     logging.info("_inject_frame_and_verify_counter")
     
-
     # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
     bcm_port_num = str(int(physical_port_num) + 1) 
     
@@ -74,12 +75,12 @@ def _inject_frame_and_verify_counter(ssh_client,
     else :
         raise Exception (f"Unrecognized frame type {frame_type}")
 
-    # 2. Read ACL counter value
+    # 2. Read the ACL counter value
     counter_prev = int(cli_control.get_show_counter(cli_client, physical_port_num, interface_type, policy_name, rule_name))
                                                                                         
     # 3. Inject frame into BCM - Run remote command in DUT
     command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
-    rv = _run_remote_shell_cmd (ssh_client, command)
+    rv = run_remote_shell_cmd (ssh_client_scope_module, command)
 
     if rv != 0 :
         raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
@@ -199,8 +200,8 @@ def netconf_client():
     yield dut_conn
     dut_conn.close()
 
-@pytest.fixture(scope="session")
-def setup_dut(ssh_client):
+@pytest.fixture(scope="function")
+def setup_dut(ssh_client_scope_module):
     """
     Move testing files into workdir in DUT.
     If workdir already exists, first delete it completly.
@@ -217,17 +218,16 @@ def setup_dut(ssh_client):
     copy_file_list = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
 
     # Create an SFTP client
-    with ssh_client.open_sftp() as sftp:   
+    with ssh_client_scope_module.open_sftp() as sftp:   
         if _remote_exists(sftp, workdir) :
             logging.info(f"Removing working directory {workdir}")
-            _run_remote_shell_cmd(ssh_client, f'rm -rf {workdir}')
+            run_remote_shell_cmd(ssh_client_scope_module, f'rm -rf {workdir}')
 
         logging.info(f"create a new folder for workspace {workdir}")           
         sftp.mkdir(workdir)
 
-        for file in copy_file_list :
-            logging.info(f"Copying {file} to the {workdir}")
-            sftp.put(file, workdir + "/" + file)
+    # Copy files to remote
+    copy_files_from_local_to_dut(ssh_client_scope_module, copy_file_list, workdir)
 
 # ***************************************************************************************
 # Test Case #0 - Setup Environment
@@ -292,7 +292,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_suite_acl_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC01_rule_r1_acl_in(ssh_client_scope_module, netconf_client, cli_client) :
     """
     Test deny on acl rule R1 :
         1. Attach policy to interface
@@ -326,7 +326,7 @@ def test_suite_acl_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client, 
+    _inject_frame_and_verify_counter(ssh_client_scope_module, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -343,7 +343,7 @@ def test_suite_acl_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC02_default_rule_acl_in(ssh_client_scope_module, netconf_client, cli_client) :
     """
     Test permit on acl default rule
     """
@@ -372,7 +372,7 @@ def test_suite_acl_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_clie
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client, 
+    _inject_frame_and_verify_counter(ssh_client_scope_module, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -389,7 +389,7 @@ def test_suite_acl_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_clie
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client_scope_module, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
@@ -422,7 +422,7 @@ def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client, 
+    _inject_frame_and_verify_counter(ssh_client_scope_module, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -439,7 +439,7 @@ def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client_scope_module, netconf_client, cli_client) :
     """
     Test deny rule default on acl ctrl-plane egress
     """
@@ -472,7 +472,7 @@ def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_c
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client, 
+    _inject_frame_and_verify_counter(ssh_client_scope_module, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -489,7 +489,7 @@ def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_c
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
+def test_suite_acl_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client_scope_module, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
@@ -522,7 +522,7 @@ def test_suite_acl_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_c
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client, 
+    _inject_frame_and_verify_counter(ssh_client_scope_module, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
