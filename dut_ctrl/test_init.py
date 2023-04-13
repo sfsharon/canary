@@ -43,6 +43,45 @@ def _link_build_to_onie_installer(device_num, device_type, build_num) :
     if rc != 0 :
         raise Exception (f"Error: {rc} from: {command}")
 
+def _get_build_number(file_name):
+    import re
+    build_num = None
+
+    build_number_string = 'Build number ='
+    with open(file_name, 'r') as file:
+        # read a list of lines into data
+        data = file.readlines()
+
+        # iterate over each line
+        for line in data:
+            # check if the line contains the string
+            if build_number_string in line:
+                build_num = re.findall('\d+', line)
+                if len(build_num) != 1 :
+                    raise Exception (f"Could not find build number in line {line}")
+                build_num = build_num[0]
+                break 
+    return build_num
+
+def _get_card_state (file_name):
+    """
+    An example of card card_CPM-0-0.state :
+    module:0/CPM0; type:N/A; admin_state:Active; oper_state:Card-Ready; ha_role:A; more_info:
+    Function returns the value of oper_state
+    """
+    import re
+    oper_state = None
+    pattern = r"oper_state:(.*?);"
+
+    with open(file_name, 'r') as file:
+        data = file.readlines()
+        for line in data:
+            match = re.search(pattern, line)
+            if match:
+                oper_state = match.group(1)
+
+    return oper_state
+
 # ***************************************************************************************
 # Test Case #01 - Installing formal build
 # ***************************************************************************************
@@ -60,9 +99,10 @@ def test_init_TC01_installing_build_and_reboot() :
     constants.read('config.ini')
     device_type = constants['GENERAL']['DUT_TYPE']
     dut_num = constants['GENERAL']['DUT_NUM']
+    build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
 
     logging.info(f"{get_time()} Prepare install soft link to point to the required build file")
-    _link_build_to_onie_installer(dut_num, device_type, build_num = '536')
+    _link_build_to_onie_installer(dut_num, device_type, build_num = build_number)
 
     cli_control.reboot_dut(device_number = dut_num, is_set_install_mode = True)
 
@@ -147,16 +187,22 @@ def test_init_TC04_reboot() :
 # ***************************************************************************************
 # Test Case #05 - Wait for DUT to boot (duplicate of TC02)
 # ***************************************************************************************
-def test_init_TC04_verify_dut_up() :
+def test_init_TC05_verify_dut_up() :
     """
     """
     import time 
-    from cli_control import get_time
+    from cli_control import get_time, reset_dut_connections
+    import configparser
 
-    logging.info (f"{get_time()} test_init_TC04_verify_dut_up")
+    logging.info (f"{get_time()} test_init_TC05_verify_dut_up")
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    dut_num = constants['GENERAL']['DUT_NUM']
 
     # Waiting for WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES minutes for the system to finish initialization
-    WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES = 6
+    WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES = 11
     minutes_waited = 0
     while minutes_waited < WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES :
         time.sleep(60)
@@ -164,6 +210,83 @@ def test_init_TC04_verify_dut_up() :
         logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to boot")
 
     logging.info(f"{get_time()} Starting to poll ONL IP to test if it is up.")
+    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
     rv = wait_for_onl_after_reboot()
 
     assert rv == True
+
+# ***************************************************************************************
+# Test Case #06 - Wait for DUT to boot (duplicate of TC02)
+# ***************************************************************************************
+def test_init_TC06_verify_card_ready() :
+    """
+    """
+    from cli_control import get_time, reset_dut_connections
+    from fixtures import copy_files_from_dut_to_local
+    import os 
+    import shutil 
+    import time
+    import configparser
+
+    logging.info (f"{get_time()} test_init_TC06_verify_card_ready")
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    dut_num = constants['GENERAL']['DUT_NUM']
+    test_build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
+
+    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
+
+    temp_dir               = './temp'
+    card_state_remote_dir  = '/vbox/cpm_image/root/var/log'
+    build_param_remote_dir = '/vbox/cpm_image/root/opt/compass'
+    card_state_files = ['card_LC-0-0.state', 'card_CPM-0-0.state']
+    build_param_file = ['build_param.txt']
+
+    # Create temp dir for the card status files from dut
+    if os.path.exists(temp_dir):
+        logging.info(f'{get_time()} Deleting existing {temp_dir} folder')
+        shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir)
+
+    # Copy files to locally temp dir
+    copy_files_from_dut_to_local(dut_num, build_param_remote_dir, build_param_file, temp_dir)
+
+    # Verify that the correct version has been installed
+    build_param_full_path = os.path.join(temp_dir, build_param_file[0])
+    dut_build_number = _get_build_number(build_param_full_path) 
+    if dut_build_number != test_build_number :
+        raise Exception(f'{get_time()} Expected build number: {test_build_number}, instead found {dut_build_number}') 
+    else :
+        logging.info(f"{get_time()} Found expected build number {dut_build_number}")
+
+    # Parse card state CPM and LC files, and verify that LC and CPM cards are ready. If not, wait for 1 minute, and try again.
+    CARD_READY_STR = "Card-Ready" 
+    is_cpm_card_init = False
+    is_lc_card_init  = False
+    lc_state_full_path  = os.path.join(temp_dir, card_state_files[0])
+    cpm_state_full_path = os.path.join(temp_dir, card_state_files[1])
+    WAIT_PERIOD_FOR_DUT_INIT_MINUTES = 5
+    minutes_waited = 0
+    while (minutes_waited < WAIT_PERIOD_FOR_DUT_INIT_MINUTES) :
+        # Copy files to locally temp dir
+        copy_files_from_dut_to_local(dut_num, card_state_remote_dir,  card_state_files, temp_dir)
+        curr_cpm_card_state = _get_card_state(cpm_state_full_path)
+        curr_lc_card_state  = _get_card_state(lc_state_full_path)
+        is_cpm_card_init =  (curr_cpm_card_state == CARD_READY_STR)
+        is_lc_card_init  =  (curr_lc_card_state  == CARD_READY_STR)
+        logging.info(f"{get_time()} CPM card state: {curr_cpm_card_state}, LC card state: {curr_lc_card_state}")        
+        if is_cpm_card_init == True and is_lc_card_init == True :
+            break
+        time.sleep(60)
+        minutes_waited += 1
+        logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to initialize")
+
+    if is_cpm_card_init != True or is_lc_card_init != True :
+        logging.info(f"{get_time()} DUT did not intialize during {WAIT_PERIOD_FOR_DUT_INIT_MINUTES} minutes.")
+        assert False
+    else :
+        logging.info(f"{get_time()} DUT intialized successfully")
+        assert True
+    

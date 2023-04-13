@@ -101,7 +101,7 @@ def get_time() :
     current_time = time.strftime("%H:%M:%S", time.localtime())
     return current_time
 
-def reset_mng_and_cpm_connections(device_number):
+def reset_dut_connections(device_number, is_reset_cpm_connection = False):
     """
     1. Reset serial server connection, so that if another client is connected, it would be kicked out.
     2. Send "dhclient ma1" on ONL CLI for fixing management communication to IP 10.3.XX.10 (needed for DUT CLI commands),
@@ -120,12 +120,14 @@ def reset_mng_and_cpm_connections(device_number):
                 root@localhost:~#
     """
     SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
+    
     CPM_PROMPT  = f"R{device_number}"
     ONL_PROMPT  = f"root@localhost:~#"
     TIMEOUT     = 20
     cli_comm    = None
 
-    logging.info("*** Begin reset_mng_and_cpm_connections")
+
+    logging.info(f"{get_time()} Begin reset_dut_connections")
 
     # 1. Disconnect other client if connected to serial server 
     _reset_serial_server_connection(device_number)
@@ -138,52 +140,82 @@ def reset_mng_and_cpm_connections(device_number):
                                    timeout=TIMEOUT)
 
         # Wait for the password prompt and enter the password
-        logging.info("Waiting for Serial server prompt")
+        logging.info(f"{get_time()} Waiting for Serial server prompt")
         cli_comm.expect('.*Escape character.*')
 
-        logging.info("send \\n")
+        logging.info(f"{get_time()}  send \\n")
         cli_comm.sendline('')
 
-        logging.info(f"Expecting connection with DUT")
+        logging.info(f"{get_time()}  Expecting connection with DUT")
         i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*', '.*localhost login:.*'])
         if i == 0:
-            logging.info("ONL CLI Shell. Doing nothing")
+            logging.info(f"{get_time()}  ONL CLI Shell. Doing nothing")
         elif i == 1:
-            logging.info("DUT CLI Shell. Exiting")
+            logging.info(f"{get_time()}  DUT CLI Shell. Exiting")
             cli_comm.sendline('exit')
             cli_comm.expect(f'.*{ONL_PROMPT}.*')
         elif i == 2:
-            logging.info("New CLI shell. Performing logging")
+            logging.info(f"{get_time()} New CLI shell. Performing logging")
             cli_comm.sendline('root')
             cli_comm.expect(f'.*Password:.*')
             cli_comm.sendline('root')
             cli_comm.expect(f'.*{ONL_PROMPT}.*')            
-        logging.info("Sending \"dhclient ma1\"")
+        logging.info(f"{get_time()} Sending \"dhclient ma1\"")
         cli_comm.sendline('dhclient ma1')
-        logging.info(f"Expecting prompt ONL prompt: {ONL_PROMPT}")
-        cli_comm.expect(f'.*{ONL_PROMPT}.*')
-
+        logging.info(f"{get_time()} Expecting ONL prompt: {ONL_PROMPT}")
+        i = cli_comm.expect([f'.*{ONL_PROMPT}.*', pexpect.TIMEOUT, pexpect.EOF], timeout=300)
+        if i == 0 :
+            logging.info(f"{get_time()} Got: {ONL_PROMPT}. Continuing")
+        elif i == 1 :
+            logging.info(f"{get_time()} Got: Timeout. Bailing out")
+            raise Exception ("Timeout")
+        elif i == 2 :
+            logging.info(f"{get_time()} Got: EOF. Bailing out")
+            raise Exception ("EOF")
+        else :
+            logging.info(f"{get_time()} Got unidentified index {i}.")
+            raise Exception ("Unidentified index")
+        
         # 3. Send ping to vrf management
-        logging.info("Connect to DUT CLI (ssc)")
-        cli_comm.sendline('ssc')
-        cli_comm.expect('.*password:.*')
-        logging.info("send password")
-        cli_comm.sendline('admin')
-        logging.info(f"Expecting CPM prompt: {CPM_PROMPT}")
-        cli_comm.expect(f'.*{CPM_PROMPT}.*')
+        if is_reset_cpm_connection == True:
+            logging.info(f"{get_time()} Resetting CPM connection (to IP 10.3.XX.1)")
+            logging.info(f"{get_time()} Connecting to DUT CLI (using command \"ssc\")")
+            cli_comm.sendline('ssc')
+            cli_comm.expect(['.*Are you sure you want to continue connecting (yes/no)?.*', '.*password:.*'])
+            if i == 0:
+                logging.info(f"{get_time()} First time connection to DUT.")
+                cli_comm.sendline('yes')
+                cli_comm.expect('.*password:.*')
+            logging.info(f"{get_time()} Sending password")
+            cli_comm.sendline('admin')
+            logging.info(f"{get_time()} Expecting CPM prompt: {CPM_PROMPT} with timeout=30")
+            cli_comm.expect([f'.*{CPM_PROMPT}.*'], timeout= 300)
 
-        ping_command = f'ping vrf management 10.3.{device_number[-2:]}.254'
-        logging.info(f"Sending ping command: \"{ping_command}\"")
-        cli_comm.sendline(f'ping vrf management 10.3.{device_number[-2:]}.254')
-        logging.info(f"Expecting end of ping")
-        cli_comm.expect([f'.*rtt min/avg/max/mdev.*', f'.*{CPM_PROMPT}.*'])
+            ping_command = f'ping vrf management 10.3.{device_number[-2:]}.254'
+            logging.info(f"{get_time()} Sending ping command: \"{ping_command}\"")
+            cli_comm.sendline(f'ping vrf management 10.3.{device_number[-2:]}.254')
+            logging.info(f"{get_time()} Expecting end of ping")
+            cli_comm.expect([f'.*rtt min/avg/max/mdev.*', f'.*{CPM_PROMPT}.*'])
+
+            # Exiting DUT CLI back to ONL, in preparation for the tests 
+            logging.info(f"{get_time()} Sending \\n")
+            cli_comm.sendline('')
+            logging.info(f"{get_time()} Expecting CPM prompt: {CPM_PROMPT}")
+            cli_comm.expect(f'.*{CPM_PROMPT}.*')
+            logging.info(f"{get_time()} Sending exit command")
+            cli_comm.sendline('exit')
+            logging.info(f"{get_time()} Expecting ONL prompt: {ONL_PROMPT}")
+            cli_comm.expect(f'.*{ONL_PROMPT}.*')
+
     except pexpect.exceptions.TIMEOUT :
-        raise Exception(f"Waiting for CLI response exceeded {TIMEOUT} seconds")
+        raise Exception(f"{get_time()} Waiting for CLI response exceeded {TIMEOUT} seconds")
+    except pexpect.exceptions.EOF :
+        raise Exception(f"{get_time()} pexpect EOF exception")    
     finally:
-        logging.info("Closing ONL CLI connection")
+        logging.info(f"{get_time()} Closing ONL CLI connection")
         cli_comm.close()
-
-    logging.info("*** End reset_mng_and_cpm_connections")
+    
+    logging.info(f"{get_time()} End reset_dut_connections")
 
 def reboot_dut(device_number, is_set_install_mode = False):
     """
@@ -248,7 +280,7 @@ def reboot_dut(device_number, is_set_install_mode = False):
         logging.info(f"{get_time()} Closing ONL CLI connection")
         cli_comm.close()
 
-    logging.info(f"{get_time()} End reset_mng_and_cpm_connections")
+    logging.info(f"{get_time()} End reset_dut_connections")
 
 def add_dev_machine_ssh_key_to_dut(device_number):
     """
@@ -259,7 +291,7 @@ def add_dev_machine_ssh_key_to_dut(device_number):
     TIMEOUT     = 5
     cli_comm    = None
 
-    logging.info(f"{get_time()} Badd_dev_machine_ssh_key_to_dut")
+    logging.info(f"{get_time()} add_dev_machine_ssh_key_to_dut")
 
     # 1. Disconnect other client if connected to serial server 
     _reset_serial_server_connection(device_number)
@@ -303,7 +335,7 @@ def add_dev_machine_ssh_key_to_dut(device_number):
         cli_comm.expect(f'.*{expected_response}.*')
 
         # Creating ~/.ssh/authorized_keys file
-        command = "echo \"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDZ/GJExXwzrbbBc/IZf4SWiLTDb6KHCGq0noyybCegEJ77Je6/rKjEnqRPRPaMdyulycrprYDfDz97OO0uwCdd7Axv0g6NunLzSbMdY5kz2cGxUYZgqub/eYLj10S2ulmeQTqCPOZ3uyO+4LCR72M3qlrjnQNkYd2oSkIF13INWhvuJ7e2FQvBqr6CvkVAiP1fVbgd5vNp4mhwTXgBEJkLWxpnFq3knNNAnod4dgNozpZQ8Ln8RaLLq3esIifyyMFMv7WzApM2CD69OwhSvCDXgdKsp5+5sFmbywGGgPxhhK3twMPcVgFderhXK+Si69YZfqdZPSoeiESLX1hvM/NBHX2E3sQDNFxeLBk0YgRR7uUohZnViRQyY9N/+YsBZHvcjAxvu+OUA2qiEw+PTUKbrORBY5KAwGYCqZGmkrtOAw3PnntBNfcTyA8gtvloYMnFBYIb4UT6DcUdRcGCHbABaTRYjf1e1NIvZPgE+ijWaAFNj03lDfyXAFU6+eaGeiE= sharonf@DEV107\" >> ~/.ssh/authorized_keys"
+        command = 'echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDZ/GJExXwzrbbBc/IZf4SWiLTDb6KHCGq0noyybCegEJ77Je6/rKjEnqRPRPaMdyulycrprYDfDz97OO0uwCdd7Axv0g6NunLzSbMdY5kz2cGxUYZgqub/eYLj10S2ulmeQTqCPOZ3uyO+4LCR72M3qlrjnQNkYd2oSkIF13INWhvuJ7e2FQvBqr6CvkVAiP1fVbgd5vNp4mhwTXgBEJkLWxpnFq3knNNAnod4dgNozpZQ8Ln8RaLLq3esIifyyMFMv7WzApM2CD69OwhSvCDXgdKsp5+5sFmbywGGgPxhhK3twMPcVgFderhXK+Si69YZfqdZPSoeiESLX1hvM/NBHX2E3sQDNFxeLBk0YgRR7uUohZnViRQyY9N/+YsBZHvcjAxvu+OUA2qiEw+PTUKbrORBY5KAwGYCqZGmkrtOAw3PnntBNfcTyA8gtvloYMnFBYIb4UT6DcUdRcGCHbABaTRYjf1e1NIvZPgE+ijWaAFNj03lDfyXAFU6+eaGeiE= sharonf@DEV107" > ~/.ssh/authorized_keys'
         expected_response = ONL_PROMPT
         logging.info(f"{get_time()} Sending \"{command}\"")
         cli_comm.sendline(command)
@@ -329,22 +361,22 @@ def open_cpm_session(device_number):
 
     try :
         # SSH into the machine
-        logging.info(f"Opening CPM CLI connection to device {device_number}")
+        logging.info(f"{get_time()} Opening CPM CLI connection to device {device_number}")
         cli_comm = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
                                   encoding='utf-8',
                                   timeout=TIMEOUT)
 
         # Wait for the password prompt and enter the password
-        logging.info("Waiting for password prompt")
+        logging.info(f"{get_time()} Waiting for password prompt")
         cli_comm.expect('password:')
 
-        logging.info("send password")
+        logging.info(f"{get_time()} send password")
         cli_comm.sendline('admin')
 
-        logging.info(f"Expecting CPM prompt: {CPM_PROMPT}")
+        logging.info(f"{get_time()} Expecting CPM prompt: {CPM_PROMPT}")
         cli_comm.expect(f'.*{CPM_PROMPT}.*')
     except pexpect.exceptions.TIMEOUT :
-        logging.error(f"Cannot connect to device {device_number}")
+        logging.error(f"{get_time()} Cannot connect to device {device_number}")
 
     return cli_comm   
 
@@ -354,7 +386,7 @@ def close_cpm_session(cli_comm):
     Input : Spawned pexpect process (cli_comm)
     Return value : None
     """
-    logging.info(f"Closing CLI connection")
+    logging.info(f"{get_time()} Closing CLI connection")
     cli_comm.close()
 
 def get_show_counter (cli_comm, interface, interface_type, policy_name, rule_name) :
@@ -367,7 +399,7 @@ def get_show_counter (cli_comm, interface, interface_type, policy_name, rule_nam
             rule_name : String
     Caveat :Sending each command twice due to bug in acl show function
     """
-    logging.info(f"Policy : {policy_name}, Rule name: {rule_name} on type: {interface_type}, interface {interface}")
+    logging.info(f"{get_time()} Policy : {policy_name}, Rule name: {rule_name} on type: {interface_type}, interface {interface}")
     if interface_type is InterfaceType.CTRL_PLANE :
         command = f'show ctrl-plane acl detail'
         expect_string = '.*MODE.*'
@@ -378,21 +410,21 @@ def get_show_counter (cli_comm, interface, interface_type, policy_name, rule_nam
         raise Exception (f"Unrecognized interface type: {interface_type}")
 
     # First counter read. Disregard results
-    logging.info(f"Send command 1st: \"{command}\"")
+    logging.info(f"{get_time()} Send command 1st: \"{command}\"")
     cli_comm.sendline(command)
-    logging.info(f"Expecting: {expect_string}")
+    logging.info(f"{get_time()} Expecting: {expect_string}")
     cli_comm.expect(expect_string)
     response = cli_comm.after
 
     # Second counter read. This is the actual value. Need to read twice due to bug
-    logging.info(f"Send command 2nd: \"{command}\"")
+    logging.info(f"{get_time()} Send command 2nd: \"{command}\"")
     cli_comm.sendline(command)
-    logging.info(f"Expecting: {expect_string}")
+    logging.info(f"{get_time()} Expecting: {expect_string}")
     cli_comm.expect(expect_string)
     response = cli_comm.after
 
     counter = _parse_show_counter(response, policy_name, rule_name)
-    logging.info(f"counter value: {counter}")
+    logging.info(f"{get_time()} Counter value: {counter}")
 
     return counter
 
@@ -402,13 +434,13 @@ def get_show_counter (cli_comm, interface, interface_type, policy_name, rule_nam
 def _print_acl_interface_details(cli_comm, interface_number) :
     """show acl interface detail x-eth0/0/1"""
     command = f'show acl interface detail x-eth0/0/{str(interface_number)}'
-    logging.info(f"Send command: \"{command}\"")
+    logging.info(f"{get_time()} Send command: \"{command}\"")
     cli_comm.sendline(command)
 
-    logging.info("Expecting: \"INTERFACE\"")
+    logging.info("{get_time()} Expecting: \"INTERFACE\"")
     cli_comm.expect('.*INTERFACE.*')
 
-    logging.info("Received results")
+    logging.info("{get_time()} Received results")
     print(cli_comm.after)
 
 def _test_acl_show_counter() :
@@ -491,7 +523,7 @@ if __name__ == "__main__" :
     # _test_get_counters()
     # _test_basic()
     # _test_acl_show_counter()
-    # reset_mng_and_cpm_connections('3010')
+    # reset_dut_connections(device_number = '3010', is_reset_cpm_connection = True)
 
     _test_get_install_file_name()
 
