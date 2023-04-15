@@ -61,8 +61,9 @@ def _inject_frame_and_verify_counter(ssh_client,
     """
     import packet_creator
     import cli_control
+    from cli_control import get_time
 
-    logging.info("_inject_frame_and_verify_counter")
+    logging.info(f"{get_time()} _inject_frame_and_verify_counter")
     
     # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
     bcm_port_num = str(int(physical_port_num) + 1) 
@@ -73,17 +74,17 @@ def _inject_frame_and_verify_counter(ssh_client,
     elif frame_type is FrameType.ICMP_FRAME :
         frame = packet_creator.create_icmp_frame(src_ip, dst_ip, dst_mac)
     else :
-        raise Exception (f"Unrecognized frame type {frame_type}")
+        raise Exception (f"{get_time()} Unrecognized frame type {frame_type}")
 
     # 2. Read the ACL counter value
     counter_prev = int(cli_control.get_show_counter(cli_client, physical_port_num, interface_type, policy_name, rule_name))
                                                                                         
     # 3. Inject frame into BCM - Run remote command in DUT
     command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
-    rv = run_remote_shell_cmd (ssh_client, command)
+    rv, output_str = run_remote_shell_cmd (ssh_client, command)
 
     if rv != 0 :
-        raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
+        raise Exception(f"{get_time()} Failed with rv: {rv}, output: {output_str}, when running remote command \"{command}\"")
         
     # 4. Reading updated ACL counter
     counter_curr = int(cli_control.get_show_counter(cli_client, physical_port_num, interface_type, policy_name, rule_name))
@@ -92,10 +93,10 @@ def _inject_frame_and_verify_counter(ssh_client,
     # Verify counter incremented correctly
     delta_counter = counter_curr - counter_prev
     num_of_tx = int(num_of_tx)
-    logging.info(f"Previous counter: {counter_prev}, Curr counter: {counter_curr}, delta : {delta_counter}, expected delta: {num_of_tx}")
+    logging.info(f"{get_time()} Previous counter: {counter_prev}, Curr counter: {counter_curr}, delta : {delta_counter}, expected delta: {num_of_tx}")
     
     assert  (delta_counter == num_of_tx), \
-             f"Error: Previous counter: {counter_prev}, Curr counter: {counter_curr}"
+             f"{get_time()} Error: Previous counter: {counter_prev}, Curr counter: {counter_curr}"
 
 def _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, acl_policy_name, interface_op) :
     """
@@ -107,17 +108,18 @@ def _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, ac
     Return : True on success, False otherwise
     """
     import netconf_comm
+    from cli_control import get_time
 
     rv = None
     x_eth_name        = "0/0/" + str(physical_port_num )
-    logging.info(f"Operation: {interface_op.name} for policy name:{acl_policy_name} on port {x_eth_name}")
+    logging.info(f"{get_time()} Operation: {interface_op.name} for policy name:{acl_policy_name} on port {x_eth_name}")
 
     if interface_op is InterfaceOp.ATTACH :
         rv = netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, x_eth_name, acl_policy_name, operation="")
     elif interface_op is InterfaceOp.DETACH :
         rv = netconf_comm.cmd_set_attach_policy_acl_in_x_eth(netconf_client, x_eth_name, acl_policy_name, operation="operation=\"delete\"")
     else :
-        raise Exception(f"Received unfamiliar operation {interface_op}")
+        raise Exception(f"{get_time()} Received unfamiliar operation {interface_op}")
     return rv
 
 def _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_policy_name, interface_op) :
@@ -130,9 +132,10 @@ def _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_polic
     Return : True on success, False otherwise
     """
     import netconf_comm
+    from cli_control import get_time
 
     rv = None
-    logging.info(f"Operation: {interface_op.name}, acl policy name:{acl_policy_name}, ctrl-plane {ctrl_plane_type}")
+    logging.info(f"{get_time()} Operation: {interface_op.name}, acl policy name:{acl_policy_name}, ctrl-plane {ctrl_plane_type}")
 
     if interface_op is InterfaceOp.ATTACH :
         rv = netconf_comm.cmd_set_ctrl_plane_acl(dut_conn            = netconf_client, 
@@ -145,7 +148,7 @@ def _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_polic
                                                  operation           = " operation=\"delete\"", 
                                                  attribute_value     = acl_policy_name)
     else :
-        raise Exception(f"Received unfamiliar operation: {interface_op.name}")
+        raise Exception(f"{get_time()} Received unfamiliar operation: {interface_op.name}")
     return rv
 
 
@@ -157,7 +160,8 @@ def cli_client():
     """
     Connect to DUT using pyexpect
     """
-    logging.info("Fixture: cli_client")
+    from cli_control import get_time
+    logging.info(f"{get_time()} Fixture: cli_client")
 
     import cli_control
     import configparser
@@ -205,7 +209,7 @@ def test_TC00_Setup_Environment(ssh_client, netconf_client):
     with ssh_client.open_sftp() as sftp:   
         if _remote_exists(sftp, workdir) :
             logging.info(f"{get_time()} Removing working directory {workdir}")
-            run_remote_shell_cmd(ssh_client, f'rm -rf {workdir}')
+            rv, output_str = run_remote_shell_cmd(ssh_client, f'rm -rf {workdir}')
 
         logging.info(f"{get_time()} Create a new folder for workspace {workdir}")
         sftp.mkdir(workdir)

@@ -7,8 +7,8 @@ logging.basicConfig(
                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
-
-from fixtures import run_local_shell_cmd, wait_for_onl_after_reboot, copy_files_from_local_to_dut
+import paramiko
+from fixtures import run_local_shell_cmd, wait_for_onl_after_reboot, copy_files_from_local_to_dut, ssh_client, run_remote_shell_cmd
 
 # ***************************************************************************************
 # Helper functions
@@ -85,7 +85,8 @@ def _get_card_state (file_name):
 def test_init_TC01_installing_build_and_reboot() :
     """
     """
-    logging.info ("{get_time()} test_init_TC01_installing_build")
+    from cli_control import get_time
+    logging.info (f"{get_time()} test_init_TC01_installing_build")
 
     import configparser
     import cli_control
@@ -129,36 +130,46 @@ def test_init_TC02_verify_dut_up() :
 
     assert rv == True
 
-
 # ***************************************************************************************
 # Test Case #03 - 
 # ***************************************************************************************
-def test_init_TC03_copy_startagent_to_dut() :
+def test_init_TC03_update_build_mode(ssh_client__no_cpm_conn_reset: paramiko.SSHClient) :
     """
-    # - Copy file resources/startagent to DUT in path "./vbox/a/local/bin/startagent"
-    # - Do a reboot
+    Update build mode from LAB to DEVELOPER. The reason is that in non-DEVELOPER mode, the screen for the bcmrm process is not created, and this disables
+        the ability to connect ot the bcm diag shell and send the "Tx" commands that simulate packet ingress 
+
         
         Neet to patch the script "startagent" in path "./vbox/a/local/bin/startagent", which activates the bcmrm process.
         The reason is that in non-DEVELOPER mode, the screen for the bcmrm process is not created, and this disables
         the ability to connect ot the bcm diag she
     """
     import configparser
-    from cli_control import get_time, add_dev_machine_ssh_key_to_dut
+    from cli_control import get_time
 
-    logging.info (f"{get_time()} test_init_TC03_copy_startagent_to_dut")
+    logging.info (f"{get_time()} test_init_TC03_update_build_mode")
 
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
+    from cli_control import add_dev_machine_ssh_key_to_dut
+
+    # Get build mode
+    command = "grep 'Build mode' /vbox/cpm_image/root/opt/compass/build_param.txt | cut -d '=' -f 2 | sed 's#  *##'"
+    rv, stdout_str = run_remote_shell_cmd(ssh_client__no_cpm_conn_reset, command)
+    if rv != 0 or len(stdout_str) != 1 :
+        raise Exception(f"{get_time()} Failed with rv {rv}, when running remote command \"{command}\"")
+
+    # Replace build mode to DEVELOPER
+    build_mode = stdout_str[0].strip()
+    logging.info (f"{get_time()} Received: {build_mode}. Replacing build mode to DEVELOPER")
+    command = f"sed -i 's/{build_mode}/DEVELOPER/g' /vbox/cpm_image/root/opt/compass/build_param.txt"
+    rv, stdout_str = run_remote_shell_cmd(ssh_client__no_cpm_conn_reset, command)
+    if rv != 0 :
+        raise Exception(f"{get_time()} Failed with rv {rv}, when running remote command \"{command}\"")
 
     # Create ssh key of DEV machine in dut
     add_dev_machine_ssh_key_to_dut(dut_num)
-
-    # scp patch file for startagent to dut
-    destdir   = '/vbox/a/local/bin'
-    copy_file_list = ["./resources/startagent"]
-    copy_files_from_local_to_dut(dut_num, copy_file_list, destdir)
 
 # ***************************************************************************************
 # Test Case #04 - Rebooting (Duplicate of TC01)

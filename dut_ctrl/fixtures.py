@@ -8,39 +8,45 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 import pytest
+import paramiko
+from typing import Tuple
 
 # ***************************************************************************************
 # Helper functions
 # ***************************************************************************************
-def run_remote_shell_cmd(ssh_client, cmd_string) :
+def run_remote_shell_cmd(ssh_client: paramiko.SSHClient, cmd_string: str) -> Tuple[int, str] :
     """
     Run remote shell command
     """
     import socket
     import paramiko
+    from cli_control import get_time
 
     exit_status = None
+    stdout_str  = None
 
     try :
         # Execute a command on the remote server and get the output
-        logging.info(f"Running remote command: \"{cmd_string}\"")
+        logging.info(f"{get_time()} Running remote command: \"{cmd_string}\"")
 
         ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(cmd_string)
 
         exit_status = ssh_stdout.channel.recv_exit_status()
         if exit_status == 0 :
-            logging.info(f"Remote command succeeded")
+            logging.info(f"{get_time()} Remote command succeeded")
         else :
-            logging.info(f"Command failed with exit status: {exit_status}")
+            logging.error(f"{get_time()} Command failed with exit status: {exit_status}")
+
+        stdout_str = [line for line in ssh_stdout]
 
     except paramiko.SSHException as e:
         # Handle SSH exception
-        logging.error(f'SSH error: {e}')
+        logging.error(f"{get_time()} SSH error: {e}")
     except socket.error as e:
         # Handle socket error
-        logging.error(f'Network error: {e}')
+        logging.error(f"{get_time()} Network error: {e}")
 
-    return exit_status
+    return exit_status, stdout_str
 
 def run_local_shell_cmd(cmd_string) :
     """
@@ -101,7 +107,7 @@ def wait_for_onl_after_reboot():
     logging.info(f"{get_time()} SSH server is up!")
     return True
 
-def _create_ssh_client():
+def _create_ssh_client(is_reset_cpm_connection):
     import configparser
     import paramiko
     import cli_control
@@ -116,7 +122,7 @@ def _create_ssh_client():
 
     # Reset the Managament interface 10.3.XX.10 (host_onl) by sending "dhclient ma1" in ONL CLI,
     # and CPM interface (10.3.XX.1) by sending ping to vrf management in the DUT CLI, using the serial server 
-    cli_control.reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = True)
+    cli_control.reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = is_reset_cpm_connection)
 
     # Connecting over SSH and Managament interface 10.3.XX.10 (host_onl) to the device
     client = paramiko.SSHClient()
@@ -194,7 +200,22 @@ def ssh_client():
     from cli_control import get_time
 
     logging.info(f"{get_time()} ssh_client: Opening connection")
-    client = _create_ssh_client()
+    client = _create_ssh_client(is_reset_cpm_connection = True)
+    yield client
+    logging.info(f"{get_time()} ssh_client: Closing connection")
+    client.close()
+
+@pytest.fixture(scope="session")
+def ssh_client__no_cpm_conn_reset():
+    """
+    Connect to DUT using SSH client, without reseting CPM connection (with ping VRF management DUT CLI command).
+    This option is meant for ssh connection to ONL only, where waiting for VRF ping through the CLI would require
+    the swapp to initialize, which is no necessary in the test_init modules.
+    """
+    from cli_control import get_time
+
+    logging.info(f"{get_time()} ssh_client: Opening connection")
+    client = _create_ssh_client(is_reset_cpm_connection = False)
     yield client
     logging.info(f"{get_time()} ssh_client: Closing connection")
     client.close()

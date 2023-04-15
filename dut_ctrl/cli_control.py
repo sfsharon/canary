@@ -101,7 +101,7 @@ def get_time() :
     current_time = time.strftime("%H:%M:%S", time.localtime())
     return current_time
 
-def reset_dut_connections(device_number, is_reset_cpm_connection = False):
+def reset_dut_connections(device_number: str, is_reset_cpm_connection: bool) -> None :
     """
     1. Reset serial server connection, so that if another client is connected, it would be kicked out.
     2. Send "dhclient ma1" on ONL CLI for fixing management communication to IP 10.3.XX.10 (needed for DUT CLI commands),
@@ -176,7 +176,7 @@ def reset_dut_connections(device_number, is_reset_cpm_connection = False):
             logging.info(f"{get_time()} Got unidentified index {i}.")
             raise Exception ("Unidentified index")
         
-        # 3. Send ping to vrf management
+        # 3. Send ping to vrf management, to "shake" the CPM 10.3.XX.1 connection into life
         if is_reset_cpm_connection == True:
             logging.info(f"{get_time()} Resetting CPM connection (to IP 10.3.XX.1)")
             logging.info(f"{get_time()} Connecting to DUT CLI (using command \"ssc\")")
