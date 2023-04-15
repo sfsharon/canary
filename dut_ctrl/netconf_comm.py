@@ -14,6 +14,7 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
+from cli_control import get_time
 
 bufsiz = 16384
 
@@ -47,7 +48,7 @@ class MyNetconf(object):
         self.saved = ""
 
     def connect(self):
-        logging.info(f"Connecting to {self.hostname}/{self.port}")
+        logging.info(f"{get_time()} Connecting to {self.hostname}/{self.port}")
         sock = create_connection(self.hostname, self.port)
         
         self.ssh = paramiko.Transport(sock)
@@ -73,8 +74,8 @@ class MyNetconf(object):
                                  username=self.username,
                                  pkey=user_private_key)
             except paramiko.AuthenticationException:
-                print("Authentication failed.")
-                sys.exit(1)
+                logging.error(f"{get_time()} Authentication failed.")
+                raise Exception ("paramiko.AuthenticationException")
 
         else:
             try:
@@ -82,8 +83,8 @@ class MyNetconf(object):
                                  username=self.username,
                                  password=self.password)
             except paramiko.AuthenticationException:
-                print("Authentication failed.")
-                sys.exit(1)
+                logging.error(f"{get_time()} Authentication failed.")
+                raise Exception ("paramiko.AuthenticationException")
 
         self.chan = self.ssh.open_session()
         self.chan.invoke_subsystem("netconf")
@@ -103,7 +104,7 @@ class MyNetconf(object):
                 self.chan.sendall(buf[:bufsiz])
                 self.saved = buf[bufsiz:]
         except socket.error as x:
-            print('socket error:', str(x))
+            logging.error(f"{get_time()} socket error: {str(x)}")
 
     def _send_eom(self):
         try:

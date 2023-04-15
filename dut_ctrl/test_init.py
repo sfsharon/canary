@@ -8,10 +8,7 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
-from fixtures import ssh_client_scope_function,                     \
-                    run_local_shell_cmd, run_remote_shell_cmd,      \
-                    wait_for_onl_after_reboot,                      \
-                    copy_files_from_local_to_dut
+from fixtures import run_local_shell_cmd, wait_for_onl_after_reboot, copy_files_from_local_to_dut
 
 # ***************************************************************************************
 # Helper functions

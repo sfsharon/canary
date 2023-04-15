@@ -82,10 +82,10 @@ def _reset_serial_server_connection(device_number) :
             hw-lab-gw-1#c
             Done
     """    
-    logging.info("Disconnect the serial server from the DUT")
+    logging.info(f"{get_time()} Disconnect the serial server from the DUT")
     import subprocess
     command = f'ts-cl 10.1.{device_number[-2:]}.253 hw-lab-gw-1 lab lab 91' 
-    logging.info(f"Command: {command}")
+    logging.info(f"{get_time()} Command: {command}")
 
     process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
@@ -134,7 +134,7 @@ def reset_dut_connections(device_number, is_reset_cpm_connection = False):
 
     try :
         # 2. Telnet into the machine using the serial server and send "dhclient ma1"
-        logging.info(f"Opening ONL CLI connection to device {device_number}")
+        logging.info(f"{get_time()} Opening ONL CLI connection to device {device_number}")
         cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
                                    encoding='utf-8',
                                    timeout=TIMEOUT)
@@ -146,7 +146,7 @@ def reset_dut_connections(device_number, is_reset_cpm_connection = False):
         logging.info(f"{get_time()}  send \\n")
         cli_comm.sendline('')
 
-        logging.info(f"{get_time()}  Expecting connection with DUT")
+        logging.info(f"{get_time()} Expecting connection with DUT")
         i = cli_comm.expect([f'.*{ONL_PROMPT}.*', f'.*{CPM_PROMPT}.*', '.*localhost login:.*'])
         if i == 0:
             logging.info(f"{get_time()}  ONL CLI Shell. Doing nothing")
@@ -520,11 +520,12 @@ def _test_get_install_file_name():
     _get_install_file_name(input, '538')
 
 if __name__ == "__main__" :
+    logging.info(f"{get_time()} Started")
     # _test_get_counters()
     # _test_basic()
     # _test_acl_show_counter()
-    # reset_dut_connections(device_number = '3010', is_reset_cpm_connection = True)
+    reset_dut_connections(device_number = '3010', is_reset_cpm_connection = True)
 
-    _test_get_install_file_name()
+    # _test_get_install_file_name()
 
-    logging.info("Finished")
+    logging.info(f"{get_time()} Finished")

@@ -3,7 +3,7 @@ Pytest runner code
 """
 import pytest
 
-from fixtures import ssh_client_scope_module, run_remote_shell_cmd, copy_files_from_local_to_dut
+from fixtures import ssh_client, netconf_client, run_remote_shell_cmd, copy_files_from_local_to_dut
 
 import logging
 from common_enums import InterfaceOp, AclCtrlPlaneType, FrameType, InterfaceType
@@ -27,7 +27,7 @@ def _remote_exists(sftp, path):
     except IOError:
         return False
 
-def _inject_frame_and_verify_counter(ssh_client_scope_module, 
+def _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx, 
@@ -47,7 +47,7 @@ def _inject_frame_and_verify_counter(ssh_client_scope_module,
         4. Read ACL counter value again, and assert that it incremented by exactly the value of packets injected 
            (Using CLI)
 
-        Input : ssh_client_scope_module      - 
+        Input : ssh_client      - 
                 cli_client      - 
                 src_ip, dst_ip, dst_mac - 
                 num_of_tx       - 
@@ -80,7 +80,7 @@ def _inject_frame_and_verify_counter(ssh_client_scope_module,
                                                                                         
     # 3. Inject frame into BCM - Run remote command in DUT
     command = f"cd {workdir};python tx_into_bcm.py {frame} {num_of_tx} {bcm_port_num}"
-    rv = run_remote_shell_cmd (ssh_client_scope_module, command)
+    rv = run_remote_shell_cmd (ssh_client, command)
 
     if rv != 0 :
         raise Exception(f"Failed with rv {rv}, when running remote command \"{command}\"")
@@ -171,68 +171,10 @@ def cli_client():
     yield cli_comm
     cli_control.close_cpm_session(cli_comm)
 
-@pytest.fixture(scope="session")
-def netconf_client():
-    """
-    Connect to DUT using Netconf protocol
-    """
-    logging.info("Fixture: netconf_client")
-
-    import netconf_comm
-    import configparser
-
-    # Read globals from ini file
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
-    HOST_NAME       = constants['COMM']['HOST_CPM']
-    NETCONF_PORT    = int(constants['NETCONF']['PORT'])
-
-    CPM_USER                = "admin"
-    CPM_PASSWORD            = "admin"
-
-    dut_conn = netconf_comm.MyNetconf(hostname = HOST_NAME, port = NETCONF_PORT, username = CPM_USER, password = CPM_PASSWORD, 
-                                      publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
-    dut_conn.connect()
-
-    # Perform get hello from DUT first.
-    netconf_comm._cmd_hello(dut_conn)
-
-    yield dut_conn
-    dut_conn.close()
-
-@pytest.fixture(scope="function")
-def setup_dut(ssh_client_scope_module):
-    """
-    Move testing files into workdir in DUT.
-    If workdir already exists, first delete it completly.
-    """
-    logging.info("Fixture: setup_dut")
-
-    import configparser
-
-    # Read globals from ini file
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
-    workdir   = constants['DUT_ENV']['WORKDIR']
-
-    copy_file_list = ["tx_into_bcm.py", "monitor_logfile.py", "config.ini"]
-
-    # Create an SFTP client
-    with ssh_client_scope_module.open_sftp() as sftp:   
-        if _remote_exists(sftp, workdir) :
-            logging.info(f"Removing working directory {workdir}")
-            run_remote_shell_cmd(ssh_client_scope_module, f'rm -rf {workdir}')
-
-        logging.info(f"create a new folder for workspace {workdir}")           
-        sftp.mkdir(workdir)
-
-    # Copy files to remote
-    copy_files_from_local_to_dut(ssh_client_scope_module, copy_file_list, workdir)
-
 # ***************************************************************************************
 # Test Case #0 - Setup Environment
 # ***************************************************************************************
-def test_TC00_Setup_Environment(setup_dut, netconf_client):
+def test_TC00_Setup_Environment(ssh_client, netconf_client):
     """
     Setup configured policy :
     1. Read global variables from config.ini file
@@ -243,15 +185,36 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
     3. Attach new policy to interface physical_port_num
        (Using Netconf)
     """
-    logging.info("test_TC00_Setup_Environment")
-    
     import configparser
     import netconf_comm
+    from cli_control import get_time
+
+    logging.info(f"{get_time()} test_TC00_Setup_Environment")
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+
+    logging.info(f"{get_time()} Move testing files into workdir in DUT. If workdir already exists, first delete it completly.")
+    
+    workdir   = constants['DUT_ENV']['WORKDIR']
+    dut_num   = constants['GENERAL']['DUT_NUM']
+    copy_file_list = ["tx_into_bcm.py", "config.ini"]
+
+    # Create an SFTP client
+    with ssh_client.open_sftp() as sftp:   
+        if _remote_exists(sftp, workdir) :
+            logging.info(f"{get_time()} Removing working directory {workdir}")
+            run_remote_shell_cmd(ssh_client, f'rm -rf {workdir}')
+
+        logging.info(f"{get_time()} Create a new folder for workspace {workdir}")
+        sftp.mkdir(workdir)
+
+    logging.info(f"{get_time()} Copy files to remote")
+    copy_files_from_local_to_dut(dut_num, copy_file_list, workdir)
 
     # Read globals from ini file
     # ----------------------------------------------------------
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
     physical_port_ip    = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     physical_port_num   = constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM']
     canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
@@ -292,7 +255,7 @@ def test_TC00_Setup_Environment(setup_dut, netconf_client):
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_suite_acl_TC01_rule_r1_acl_in(ssh_client_scope_module, netconf_client, cli_client) :
+def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test deny on acl rule R1 :
         1. Attach policy to interface
@@ -326,7 +289,7 @@ def test_suite_acl_TC01_rule_r1_acl_in(ssh_client_scope_module, netconf_client, 
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client_scope_module, 
+    _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -343,7 +306,7 @@ def test_suite_acl_TC01_rule_r1_acl_in(ssh_client_scope_module, netconf_client, 
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC02_default_rule_acl_in(ssh_client_scope_module, netconf_client, cli_client) :
+def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test permit on acl default rule
     """
@@ -372,7 +335,7 @@ def test_suite_acl_TC02_default_rule_acl_in(ssh_client_scope_module, netconf_cli
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client_scope_module, 
+    _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -389,7 +352,7 @@ def test_suite_acl_TC02_default_rule_acl_in(ssh_client_scope_module, netconf_cli
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client_scope_module, netconf_client, cli_client) :
+def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
@@ -422,7 +385,7 @@ def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client_scope_module, n
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client_scope_module, 
+    _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -439,7 +402,7 @@ def test_suite_acl_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client_scope_module, n
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client_scope_module, netconf_client, cli_client) :
+def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule default on acl ctrl-plane egress
     """
@@ -472,7 +435,7 @@ def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client_scope_modu
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client_scope_module, 
+    _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,
@@ -489,7 +452,7 @@ def test_suite_acl_TC04_acl_rule_default_ctrl_plane_egress(ssh_client_scope_modu
     if rv == False :
         raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
 
-def test_suite_acl_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client_scope_module, netconf_client, cli_client) :
+def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
@@ -522,7 +485,7 @@ def test_suite_acl_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client_scope_modu
 
     # Perform test
     # ---------------------------------------------------------------------------        
-    _inject_frame_and_verify_counter(ssh_client_scope_module, 
+    _inject_frame_and_verify_counter(ssh_client, 
                                      cli_client,                                     
                                      src_ip, dst_ip, dst_mac, 
                                      num_of_tx,

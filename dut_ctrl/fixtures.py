@@ -186,24 +186,44 @@ def copy_files_from_dut_to_local(dut_num, remote_dir, remote_files_list, local_p
 # ***************************************************************************************
 # Fixtures functions
 # ***************************************************************************************
-@pytest.fixture(scope="module")
-def ssh_client_scope_module():
+@pytest.fixture(scope="session")
+def ssh_client():
     """
-    Connect to DUT using SSH client with module fixture scope
+    Connect to DUT using SSH client
     """
-    logging.info("ssh_client_scope_module: Opening connection")
+    from cli_control import get_time
+
+    logging.info(f"{get_time()} ssh_client: Opening connection")
     client = _create_ssh_client()
     yield client
-    logging.info(f"ssh_client_scope_module: Closing connection")
+    logging.info(f"{get_time()} ssh_client: Closing connection")
     client.close()
 
-@pytest.fixture(scope="function")
-def ssh_client_scope_function():
+@pytest.fixture(scope="session")
+def netconf_client():
     """
-    Connect to DUT using SSH client with function fixture scope
+    Connect to DUT using Netconf protocol
     """
-    logging.info("ssh_client_scope_function: Opening connection")
-    client = _create_ssh_client()
-    yield client
-    logging.info(f"ssh_client_scope_function: Closing connection")
-    client.close()
+    logging.info("Fixture: netconf_client")
+
+    import netconf_comm
+    import configparser
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    HOST_NAME       = constants['COMM']['HOST_CPM']
+    NETCONF_PORT    = int(constants['NETCONF']['PORT'])
+
+    CPM_USER                = "admin"
+    CPM_PASSWORD            = "admin"
+
+    dut_conn = netconf_comm.MyNetconf(hostname = HOST_NAME, port = NETCONF_PORT, username = CPM_USER, password = CPM_PASSWORD, 
+                                      publicKey = "", publicKeyType = "", privateKeyFile = "", privateKeyType = "") 
+    dut_conn.connect()
+
+    # Perform get hello from DUT first.
+    netconf_comm._cmd_hello(dut_conn)
+
+    yield dut_conn
+    dut_conn.close()
