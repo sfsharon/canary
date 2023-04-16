@@ -30,5 +30,9 @@ class InterfaceType(Enum):
     """
     Enumeration for the interface type
     """
-    X_ETH = 1
+    X_ETH       = 1
     CTRL_PLANE  = 2
+
+class BcmrmErrors(Enum):
+    OK        = 1
+    DMA_ERROR = 2

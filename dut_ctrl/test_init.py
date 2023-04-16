@@ -14,6 +14,9 @@ from fixtures import run_local_shell_cmd,               \
                      ssh_client, run_remote_shell_cmd,  \
                      ssh_client__no_cpm_conn_reset
 
+from common_enums import BcmrmErrors
+
+
 # ***************************************************************************************
 # Helper functions
 # ***************************************************************************************
@@ -83,18 +86,136 @@ def _get_card_state (file_name):
 
     return oper_state
 
+def _verify_onl_up(wait_timeout_for_onl_to_boot_minutes) :
+    import time 
+    from cli_control import get_time, reset_dut_connections
+    import configparser
+
+    logging.info (f"{get_time()} test_init_TC05_verify_dut_up")
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    dut_num = constants['GENERAL']['DUT_NUM']
+
+    # Waiting for WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES minutes for the system to finish initialization
+    # WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES = 11
+    minutes_waited = 0
+    while minutes_waited < wait_timeout_for_onl_to_boot_minutes :
+        time.sleep(60)
+        minutes_waited += 1
+        logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to boot")
+
+    logging.info(f"{get_time()} Starting to poll ONL IP to test if it is up.")
+    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
+    rv = wait_for_onl_after_reboot()
+
+    assert rv == True
+
+def _wait_cpm_and_lc_card_ready() -> bool:
+    """
+    Return Value : True if both CPM and LC cards reached state CARD_READY within
+    timeout WAIT_PERIOD_FOR_DUT_INIT_MINUTES, False otherwise.
+    """
+    from cli_control import get_time, reset_dut_connections
+    from fixtures import copy_files_from_dut_to_local
+    import os 
+    import time
+    import configparser
+
+    logging.info (f"{get_time()} test_init_TC06_verify_cpm_ready")
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    dut_num = constants['GENERAL']['DUT_NUM']
+
+    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
+
+    temp_dir               = './temp'
+    card_state_remote_dir  = '/vbox/cpm_image/root/var/log'
+    card_state_files = ['card_LC-0-0.state', 'card_CPM-0-0.state']
+
+    # Parse card state CPM and LC files, and verify that LC and CPM cards are ready. If not, wait for 1 minute, and try again.
+    CARD_READY_STR = "Card-Ready" 
+    is_cpm_card_init = False
+    is_lc_card_init  = False
+    lc_state_full_path  = os.path.join(temp_dir, card_state_files[0])
+    cpm_state_full_path = os.path.join(temp_dir, card_state_files[1])
+    WAIT_PERIOD_FOR_DUT_INIT_MINUTES = 5
+    minutes_waited = 0
+    while (minutes_waited < WAIT_PERIOD_FOR_DUT_INIT_MINUTES) :
+        # Copy files to locally temp dir
+        copy_files_from_dut_to_local(dut_num, card_state_remote_dir,  card_state_files, temp_dir)
+        curr_cpm_card_state = _get_card_state(cpm_state_full_path)
+        curr_lc_card_state  = _get_card_state(lc_state_full_path)
+        is_cpm_card_init =  (curr_cpm_card_state == CARD_READY_STR)
+        is_lc_card_init  =  (curr_lc_card_state  == CARD_READY_STR)
+        logging.info(f"{get_time()} CPM {curr_cpm_card_state}, LC {curr_lc_card_state}")        
+        if is_cpm_card_init == True and is_lc_card_init == True :
+            break
+        time.sleep(60)
+        minutes_waited += 1
+        if minutes_waited == 1 :
+            logging.info(f"{get_time()} Waited for 1 minute for the DUT to initialize")
+        else :
+            logging.info(f"{get_time()} Waited for {minutes_waited} minutes for the DUT to initialize")
+
+    rv = None
+    if is_cpm_card_init != True or is_lc_card_init != True :
+        logging.info(f"{get_time()} DUT did not intialize during {WAIT_PERIOD_FOR_DUT_INIT_MINUTES} minutes.")
+        rv = False
+    else :
+        logging.info(f"{get_time()} DUT intialized successfully")
+        rv = True    
+
+    return rv
+
+def _get_bcmrm_error(dut_num: str, temp_dir: str):
+    """
+    Parse the bcmrm log file /vbox/lc_image/root/var/log/bcmrm_bsl_trace_buffer.trace so that
+    application can decide if this an issue that can beresolved by booting, like issue BcmrmErrors.DMA_ERROR 
+    Return value : Enumeration class 
+
+    Example of DMA error in bcmrm_bsl log file :
+        The file bcmrm_bsl_trace_buffer.trace log error for this case is :
+        IRR_MCDB.IRR0 polling timeout
+        This DMA failure may be due to wrong PCI configuration.
+    """
+    from fixtures import copy_files_from_dut_to_local
+    import os
+    from cli_control import get_time
+
+    rv = None
+
+    DMA_ISSUE_STRING_1 = "IRR_MCDB.IRR0 polling timeout"
+    DMA_ISSUE_STRING_2 = "This DMA failure may be due to wrong PCI configuration"
+
+    lc_log_dir = '/vbox/lc_image/root/var/log'
+    bcmrm_log_file = ['bcmrm_bsl_trace_buffer.trace']
+    bcmrm_log_full_path = os.path.join(temp_dir, bcmrm_log_file[0])
+    
+    copy_files_from_dut_to_local(dut_num, lc_log_dir, bcmrm_log_file, temp_dir)
+    
+    with open(bcmrm_log_full_path, 'r') as file:
+        contents = file.read()
+        if DMA_ISSUE_STRING_1 in contents or DMA_ISSUE_STRING_2 in contents:
+            rv = BcmrmErrors.DMA_ERROR
+        else:
+            rv = BcmrmErrors.OK
+    
+    return rv
+
 # ***************************************************************************************
 # Test Case #01 - Installing formal build
 # ***************************************************************************************
 def test_init_TC01_installing_build_and_reboot() :
     """
     """
-    from cli_control import get_time
+    from cli_control import get_time, reboot_dut
     logging.info (f"{get_time()} test_init_TC01_installing_build")
 
     import configparser
-    import cli_control
-    from cli_control import get_time
 
     # Read globals from ini file
     constants = configparser.ConfigParser()
@@ -106,7 +227,7 @@ def test_init_TC01_installing_build_and_reboot() :
     logging.info(f"{get_time()} Prepare install soft link to point to the required build file")
     _link_build_to_onie_installer(dut_num, device_type, build_num = build_number)
 
-    cli_control.reboot_dut(device_number = dut_num, is_set_install_mode = True)
+    reboot_dut(device_number = dut_num, is_set_install_mode = True)
 
 # ***************************************************************************************
 # Test Case #02 - Wait for DUT to boot, and replace script startagent
@@ -116,23 +237,10 @@ def test_init_TC02_verify_dut_up() :
     1. Verify the dut responds to ssh port on onl interface
     2. WIP - Verify that for command "show system module" (show sys mod) both lc and cpm are "Card-Ready"
     """
-    import time 
     from cli_control import get_time
 
     logging.info (f"{get_time()} test_init_TC02_verify_dut_up")
-
-    # Waiting for WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES minutes for the system to finish initialization
-    WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES = 6
-    minutes_waited = 0
-    while minutes_waited < WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES :
-        time.sleep(60)
-        minutes_waited += 1
-        logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to boot")
-
-    logging.info(f"{get_time()} Starting to poll ONL IP to test if it is up.")
-    rv = wait_for_onl_after_reboot()
-
-    assert rv == True
+    _verify_onl_up(wait_timeout_for_onl_to_boot_minutes = 6)
 
 # ***************************************************************************************
 # Test Case #03 - 
@@ -181,7 +289,7 @@ def test_init_TC03_update_build_mode(ssh_client__no_cpm_conn_reset: paramiko.SSH
 def test_init_TC04_reboot() :
     """
     """
-    from cli_control import get_time
+    from cli_control import get_time, reboot_dut
 
     logging.info (f"{get_time()} test_init_TC04_reboot")
 
@@ -194,7 +302,7 @@ def test_init_TC04_reboot() :
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
 
-    cli_control.reboot_dut(device_number = dut_num, is_set_install_mode = False)
+    reboot_dut(device_number = dut_num, is_set_install_mode = False)
 
 # ***************************************************************************************
 # Test Case #05 - Wait for DUT to boot (duplicate of TC02)
@@ -202,45 +310,24 @@ def test_init_TC04_reboot() :
 def test_init_TC05_verify_dut_up() :
     """
     """
-    import time 
-    from cli_control import get_time, reset_dut_connections
-    import configparser
+    from cli_control import get_time
 
     logging.info (f"{get_time()} test_init_TC05_verify_dut_up")
-
-    # Read globals from ini file
-    constants = configparser.ConfigParser()
-    constants.read('config.ini')
-    dut_num = constants['GENERAL']['DUT_NUM']
-
-    # Waiting for WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES minutes for the system to finish initialization
-    WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES = 11
-    minutes_waited = 0
-    while minutes_waited < WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES :
-        time.sleep(60)
-        minutes_waited += 1
-        logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to boot")
-
-    logging.info(f"{get_time()} Starting to poll ONL IP to test if it is up.")
-    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
-    rv = wait_for_onl_after_reboot()
-
-    assert rv == True
+    _verify_onl_up(wait_timeout_for_onl_to_boot_minutes=11)
 
 # ***************************************************************************************
 # Test Case #06 - Wait for DUT to boot (duplicate of TC02)
 # ***************************************************************************************
-def test_init_TC06_verify_card_ready() :
+def test_init_TC06_verify_cpm_ready() :
     """
     """
-    from cli_control import get_time, reset_dut_connections
+    from cli_control import get_time, reset_dut_connections, reboot_dut
     from fixtures import copy_files_from_dut_to_local
     import os 
     import shutil 
-    import time
     import configparser
 
-    logging.info (f"{get_time()} test_init_TC06_verify_card_ready")
+    logging.info (f"{get_time()} test_init_TC06_verify_cpm_ready")
 
     # Read globals from ini file
     constants = configparser.ConfigParser()
@@ -251,9 +338,7 @@ def test_init_TC06_verify_card_ready() :
     reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
 
     temp_dir               = './temp'
-    card_state_remote_dir  = '/vbox/cpm_image/root/var/log'
     build_param_remote_dir = '/vbox/cpm_image/root/opt/compass'
-    card_state_files = ['card_LC-0-0.state', 'card_CPM-0-0.state']
     build_param_file = ['build_param.txt']
 
     # Create temp dir for the card status files from dut
@@ -273,38 +358,24 @@ def test_init_TC06_verify_card_ready() :
     else :
         logging.info(f"{get_time()} Found expected build number {dut_build_number}")
 
-    # Parse card state CPM and LC files, and verify that LC and CPM cards are ready. If not, wait for 1 minute, and try again.
-    CARD_READY_STR = "Card-Ready" 
-    is_cpm_card_init = False
-    is_lc_card_init  = False
-    lc_state_full_path  = os.path.join(temp_dir, card_state_files[0])
-    cpm_state_full_path = os.path.join(temp_dir, card_state_files[1])
-    WAIT_PERIOD_FOR_DUT_INIT_MINUTES = 5
-    minutes_waited = 0
-    while (minutes_waited < WAIT_PERIOD_FOR_DUT_INIT_MINUTES) :
-        # Copy files to locally temp dir
-        copy_files_from_dut_to_local(dut_num, card_state_remote_dir,  card_state_files, temp_dir)
-        curr_cpm_card_state = _get_card_state(cpm_state_full_path)
-        curr_lc_card_state  = _get_card_state(lc_state_full_path)
-        is_cpm_card_init =  (curr_cpm_card_state == CARD_READY_STR)
-        is_lc_card_init  =  (curr_lc_card_state  == CARD_READY_STR)
-        logging.info(f"{get_time()} CPM card state: {curr_cpm_card_state}, LC card state: {curr_lc_card_state}")        
-        if is_cpm_card_init == True and is_lc_card_init == True :
-            break
-        time.sleep(60)
-        minutes_waited += 1
-        logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to initialize")
+    rv = _wait_cpm_and_lc_card_ready()
 
-    if is_cpm_card_init != True or is_lc_card_init != True :
-        logging.info(f"{get_time()} DUT did not intialize during {WAIT_PERIOD_FOR_DUT_INIT_MINUTES} minutes.")
-        assert False
-    else :
-        logging.info(f"{get_time()} DUT intialized successfully")
-        assert True
-    
-# TODO : Need to handle DMA error during boot, which leaves the device cards in state :  CPM card state: Card-Ready, LC card state: Configuring-Egress
-# """
-# The file bcmrm_bsl_trace_buffer.trace log error for this case is :
-# IRR_MCDB.IRR0 polling timeout
-# This DMA failure may be due to wrong PCI configuration. Timeout configured to 56
-# """
+    if  rv == False :
+        logging.info (f"{get_time()} CPM and LC did not reach CARD_READY during timeout. Inspecting bcmrm_bsl log file")
+        _verify_onl_up(wait_timeout_for_onl_to_boot_minutes=6)
+        bcmrm_error = _get_bcmrm_error(dut_num, temp_dir)
+
+        if bcmrm_error is BcmrmErrors.DMA_ERROR :
+            logging.info (f"{get_time()} bcmrm_bsl log file shows there was a DMA error. Rebooting again.")
+
+            reboot_dut(device_number = dut_num, is_set_install_mode = False)
+            _verify_onl_up(wait_timeout_for_onl_to_boot_minutes=11)
+            rv = _wait_cpm_and_lc_card_ready()
+            if rv == False :
+                raise Exception ("Device did not reboot correctly after a DMA bcmrm error")
+        else :
+            raise Exception ("Device did not initialized correctly - Unknown reason")
+    assert True
+
+
+        

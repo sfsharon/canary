@@ -52,7 +52,6 @@ def run_local_shell_cmd(cmd_string) :
     """
     Run local shell command
     """
-
     import subprocess
 
     logging.debug(f"Running command: {cmd_string}")
@@ -150,7 +149,7 @@ def copy_files_from_local_to_dut(dut_num, local_files_list, remote_dut_path):
         else :
             logging.info((f"Succeeded in copying {file} to {remote_dut_path}"))
 
-def copy_files_from_dut_to_local(dut_num, remote_dir, remote_files_list, local_path):
+def copy_files_from_dut_to_local(dut_num: str, remote_dir: str, remote_files_list, local_path):
     """
     Copy files from remote_files_list in DUT to local_path.
     Input : remote_dir - Remote directory
