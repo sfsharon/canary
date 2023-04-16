@@ -20,21 +20,38 @@ from common_enums import BcmrmErrors
 # ***************************************************************************************
 # Helper functions
 # ***************************************************************************************
+def _get_list_of_files(dir: str) -> str :
+    """
+    """
+    from cli_control import get_time
+
+    command = f'ls -l {dir}'
+    rc, output = run_local_shell_cmd(command)
+    if rc != 0 :
+        raise Exception (f"{get_time()} Error: {rc} from: {command}")
+    
+    return output
+
 def _link_build_to_onie_installer(device_num, device_type, build_num) :
     """
-    Soft link onie-installer for device_num to official build number build_num
+    Soft link onie-installer for device_num to official build number build_num.
+    If build_num == None, use the latest build number from build_path
     """
     import os
-    import cli_control
+    from cli_control import get_time, get_official_install_file_name, get_official_latest_build
     
     # 1. Get name of build build_num
     build_path = '/auto/exaware/build-slave/images/develop'
-    command = f'ls -l {build_path}'
-    rc, output = run_local_shell_cmd(command)
-    if rc != 0 :
-        raise Exception (f"Error: {rc} from: {command}")
+    output = _get_list_of_files(build_path)
+    
+    if build_num == None:
+        build_num = get_official_latest_build(output)
+        logging.info (f"{get_time()} Using latest build number: {build_num}")
+    else :
+        logging.info (f"{get_time()} Using user defined build number: {build_num}")
 
-    build_file_name = cli_control._get_install_file_name(output, build_num)
+    build_file_name = get_official_install_file_name(output, build_num)
+    
     logging.info(f"Build: {build_num}, File name: {build_file_name}")
 
     # 2. Link formal build to device device_num onie-installer
@@ -46,26 +63,6 @@ def _link_build_to_onie_installer(device_num, device_type, build_num) :
     rc, output = run_local_shell_cmd(command)
     if rc != 0 :
         raise Exception (f"Error: {rc} from: {command}")
-
-def _get_build_number(file_name):
-    import re
-    build_num = None
-
-    build_number_string = 'Build number ='
-    with open(file_name, 'r') as file:
-        # read a list of lines into data
-        data = file.readlines()
-
-        # iterate over each line
-        for line in data:
-            # check if the line contains the string
-            if build_number_string in line:
-                build_num = re.findall('\d+', line)
-                if len(build_num) != 1 :
-                    raise Exception (f"Could not find build number in line {line}")
-                build_num = build_num[0]
-                break 
-    return build_num
 
 def _get_card_state (file_name):
     """
@@ -211,6 +208,7 @@ def _get_bcmrm_error(dut_num: str, temp_dir: str):
 # ***************************************************************************************
 def test_init_TC01_installing_build_and_reboot() :
     """
+    If attribute 'GENERAL'/'TEST_BUILD_NUMBER' does not exist, will use the latest official build
     """
     from cli_control import get_time, reboot_dut
     logging.info (f"{get_time()} test_init_TC01_installing_build")
@@ -222,10 +220,14 @@ def test_init_TC01_installing_build_and_reboot() :
     constants.read('config.ini')
     device_type = constants['GENERAL']['DUT_TYPE']
     dut_num = constants['GENERAL']['DUT_NUM']
-    build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
+
+    if constants.has_option('GENERAL', 'TEST_BUILD_NUMBER'):
+        build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
+    else:
+        build_number = None
 
     logging.info(f"{get_time()} Prepare install soft link to point to the required build file")
-    _link_build_to_onie_installer(dut_num, device_type, build_num = build_number)
+    _link_build_to_onie_installer(dut_num, device_type, build_number)
 
     reboot_dut(device_number = dut_num, is_set_install_mode = True)
 
@@ -321,7 +323,7 @@ def test_init_TC05_verify_dut_up() :
 def test_init_TC06_verify_cpm_ready() :
     """
     """
-    from cli_control import get_time, reset_dut_connections, reboot_dut
+    from cli_control import get_time, reset_dut_connections, reboot_dut, get_build_number_from_build_param_file, get_official_latest_build
     from fixtures import copy_files_from_dut_to_local
     import os 
     import shutil 
@@ -333,7 +335,15 @@ def test_init_TC06_verify_cpm_ready() :
     constants = configparser.ConfigParser()
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
-    test_build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
+    
+    if constants.has_option('GENERAL', 'TEST_BUILD_NUMBER'):
+        test_build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
+        logging.info (f"{get_time()} Using user defined build number: {test_build_number}")
+    else:
+        build_path = '/auto/exaware/build-slave/images/develop'
+        output = _get_list_of_files(build_path)
+        test_build_number = get_official_latest_build(output)
+        logging.info (f"{get_time()} Using latest build number: {test_build_number}")
 
     reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
 
@@ -352,7 +362,7 @@ def test_init_TC06_verify_cpm_ready() :
 
     # Verify that the correct version has been installed
     build_param_full_path = os.path.join(temp_dir, build_param_file[0])
-    dut_build_number = _get_build_number(build_param_full_path) 
+    dut_build_number = get_build_number_from_build_param_file(build_param_full_path) 
     if dut_build_number != test_build_number :
         raise Exception(f'{get_time()} Expected build number: {test_build_number}, instead found {dut_build_number}') 
     else :

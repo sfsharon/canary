@@ -25,7 +25,7 @@ def _print_system_mod (cli_comm) :
     logging.info("Received results")
     print(cli_comm.after)
 
-def _get_install_file_name(cli_response, build_number) :
+def get_official_install_file_name(cli_response, build_number) :
     """
     Input: cli_response - Output from command "ls" for build files 
            build_number -
@@ -43,7 +43,47 @@ def _get_install_file_name(cli_response, build_number) :
 
     return required_file_name
 
+def get_official_latest_build(cli_response: str) -> str :
+    """
+    Input: cli_response - Output from command "ls" for build files 
+    Return value : String, Latest build_number
+    """
+    import re
+    install_file_name_pattern   = r"^onie-installer-.*b\d+$"
+    get_build_num_pattern       = r"\d+$"
+    max_build_num = 0
+
+    normalised_input = [line.lstrip() for line in cli_response.splitlines()]
+    for i, line in enumerate(normalised_input) :
+        file_name = (line.split())[-1]
+        if re.search(install_file_name_pattern, file_name) :
+            match = re.search(get_build_num_pattern, file_name)
+            build_num = int(match.group())
+            if build_num > max_build_num : max_build_num = build_num
+            logging.debug(f"Found build number {build_num}")
+    logging.debug(f"Latest build number {max_build_num}")
+    return str(max_build_num)
     
+def get_build_number_from_build_param_file(file_name):
+    import re
+    build_num = None
+
+    build_number_string = 'Build number ='
+    with open(file_name, 'r') as file:
+        # read a list of lines into data
+        data = file.readlines()
+
+        # iterate over each line
+        for line in data:
+            # check if the line contains the string
+            if build_number_string in line:
+                build_num = re.findall('\d+', line)
+                if len(build_num) != 1 :
+                    raise Exception (f"Could not find build number in line {line}")
+                build_num = build_num[0]
+                break 
+    return build_num
+
 def _parse_show_counter(cli_response, policy_name, rule_name) :
     """
         Parse input from DUT for acl show command, and return the counter value
@@ -504,7 +544,7 @@ def _test_get_counters() :
     counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name__r1_deny_default_permit, "rule-default")
     print (f"Rule: default, GOT : {counter}")
 
-def _test_get_install_file_name():
+def _test_official_builds_manipulation():
     input = """-rw-r--r-- 1 buildslave sw-all        33 Mar 30 00:19 onie-installer-vdevelop.8.0.0-2023-03-29-21-18-14-l-nl-g03b2807b-b536.bsc
 -rw-r--r-- 1 buildslave sw-all 734982823 Apr  2 00:19 onie-installer-vdevelop.8.0.0-2023-04-01-21-18-06-l-nl-g03b2807b-b537
 -rw-r--r-- 1 buildslave sw-all        33 Apr  2 00:19 onie-installer-vdevelop.8.0.0-2023-04-01-21-18-06-l-nl-g03b2807b-b537.bsc
@@ -517,15 +557,16 @@ def _test_get_install_file_name():
 -rwxrwxrwx 1 buildslave sw-all 700857989 Jan  8 00:18 vbox-vdevelop.8.0.0-2023-01-07-22-15-27-l-nl-g9c0dd54c-b481.tar.gz
 -rwxrwxrwx 1 buildslave sw-all        33 Jan  8 00:18 vbox-vdevelop.8.0.0-2023-01-07-22-15-27-l-nl-g9c0dd54c-b481.tar.gz.bsc"""
 
-    _get_install_file_name(input, '538')
+    # get_official_install_file_name(input, '538')
+    get_official_latest_build(input)
 
 if __name__ == "__main__" :
     logging.info(f"{get_time()} Started")
     # _test_get_counters()
     # _test_basic()
     # _test_acl_show_counter()
-    reset_dut_connections(device_number = '3010', is_reset_cpm_connection = True)
+    # reset_dut_connections(device_number = '3010', is_reset_cpm_connection = True)
 
-    # _test_get_install_file_name()
+    _test_official_builds_manipulation()
 
     logging.info(f"{get_time()} Finished")
