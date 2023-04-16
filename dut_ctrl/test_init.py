@@ -302,3 +302,9 @@ def test_init_TC06_verify_card_ready() :
         logging.info(f"{get_time()} DUT intialized successfully")
         assert True
     
+# TODO : Need to handle DMA error during boot, which leaves the device cards in state :  CPM card state: Card-Ready, LC card state: Configuring-Egress
+# """
+# The file bcmrm_bsl_trace_buffer.trace log error for this case is :
+# IRR_MCDB.IRR0 polling timeout
+# This DMA failure may be due to wrong PCI configuration. Timeout configured to 56
+# """

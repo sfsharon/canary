@@ -55,7 +55,7 @@ def run_local_shell_cmd(cmd_string) :
 
     import subprocess
 
-    logging.info(f"Running command: {cmd_string}")
+    logging.debug(f"Running command: {cmd_string}")
     result = subprocess.run(cmd_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     rc = result.returncode
     output = result.stdout.decode()
@@ -163,7 +163,7 @@ def copy_files_from_dut_to_local(dut_num, remote_dir, remote_files_list, local_p
     from cli_control import get_time
     import time
 
-    logging.info(f"{get_time()} copy_files_from_local_to_dut")
+    logging.debug(f"{get_time()} copy_files_from_local_to_dut")
     
     num_of_retries = 5
     SLEEP_BETWEEN_RETRIES_SECONDS = 60
@@ -181,7 +181,7 @@ def copy_files_from_dut_to_local(dut_num, remote_dir, remote_files_list, local_p
                 time.sleep(SLEEP_BETWEEN_RETRIES_SECONDS)
                 break    
             else :
-                logging.info((f"{get_time()} Succeeded in copying {full_file_path} to {local_path}"))
+                logging.debug((f"{get_time()} Succeeded in copying {full_file_path} to {local_path}"))
             
             if index == len(remote_files_list) - 1 :
                 is_finished = True
