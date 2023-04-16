@@ -509,7 +509,7 @@ ACL_CTRL_PLANE_XML_CMD ="""<ctrl-plane xmlns="http://compass-eos.com/ns/compass_
                                 </policy>
                             </ctrl-plane>"""
 
-ACL_POLICY_DENY_SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">
+ACL_POLICY_R1_DENY_DEFAULT_PERMIT__SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">
                                     <acl {operation}>
                                         <name>{policy_name}</name>
                                         <rule>
@@ -540,6 +540,36 @@ ACL_POLICY_DENY_SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/com
                                     </acl>
                                 </policy>"""
 
+ACL_POLICY_R1_PERMIT_DEFAULT_DENY__SRC_IP_XML_CMD = """<policy xmlns="http://compass-eos.com/ns/compass_cupl/1.0">
+                                    <acl {operation}>
+                                        <name>{policy_name}</name>
+                                        <rule>
+                                            <name>r1</name>
+                                            <conditional>
+                                                <if>
+                                                    <plaincondition>
+                                                        <source-ip>
+                                                            <plain>
+                                                                <eq>
+                                                                    <value>{src_ip_to_permit}</value>
+                                                                </eq>
+                                                            </plain>
+                                                        </source-ip>
+                                                    </plaincondition>
+                                                    <then>
+                                                        <permit/>
+                                                    </then>
+                                                </if>
+                                            </conditional>
+                                        </rule>
+                                        <rule>
+                                            <name>rule-default</name>
+                                            <unconditional>
+                                                <deny/>
+                                            </unconditional>
+                                        </rule>
+                                    </acl>
+                                </policy>"""
 
 # ***************************************************************************************
 # Canary Helper functions
@@ -724,14 +754,24 @@ def cmd_set_ctrl_plane_acl(dut_conn, acl_ctrl_plane_type, operation, attribute_v
     logging.info(f"acl_ctrl_plane_type: {acl_ctrl_plane_type}, operation: {operation}, attribute_value: {attribute_value}")
     return _configure_and_commit(dut_conn, xml_command)
 
-def cmd_set_acl_policy__deny_src_ip (dut_conn, policy_name, src_ip_to_deny, operation) :
+def cmd_set_acl_policy__r1_deny_default_permit__src_ip (dut_conn, policy_name, src_ip_to_deny, operation) :
     """
-    Configure acl policy for denying a certain source IP
+    Configure acl policy with r1 rule and deny operation, default rule with permit operation, for a certain source IP
     """
-    xml_command = ACL_POLICY_DENY_SRC_IP_XML_CMD.format(policy_name    = policy_name,
-                                                        operation      = operation,
-                                                        src_ip_to_deny = src_ip_to_deny)
+    xml_command = ACL_POLICY_R1_DENY_DEFAULT_PERMIT__SRC_IP_XML_CMD.format(policy_name    = policy_name,
+                                                                           operation      = operation,
+                                                                           src_ip_to_deny = src_ip_to_deny)
     logging.info(f"policy_name: {policy_name}, operation: {operation}, src_ip_to_deny: {src_ip_to_deny}")
+    return _configure_and_commit(dut_conn, xml_command)
+
+def cmd_set_acl_policy__r1_permit_default_deny__src_ip (dut_conn, policy_name, src_ip_to_permit, operation) :
+    """
+    Configure acl policy with r1 rule and permit operation, default rule with deny operation, for a certain source IP
+    """
+    xml_command = ACL_POLICY_R1_PERMIT_DEFAULT_DENY__SRC_IP_XML_CMD.format(policy_name    = policy_name,
+                                                                           operation      = operation,
+                                                                           src_ip_to_permit = src_ip_to_permit)
+    logging.info(f"policy_name: {policy_name}, operation: {operation}, src_ip_to_permit: {src_ip_to_permit}")
     return _configure_and_commit(dut_conn, xml_command)
 
 # ***************************************************************************************
@@ -748,7 +788,7 @@ def my_main() :
     constants.read('config.ini')
     HOST_NAME       = constants['COMM']['HOST_CPM']
     NETCONF_PORT    = int(constants['NETCONF']['PORT'])
-    ACL_POLICY_NAME = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    ACL_POLICY_NAME = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
 
     NEW_ACL_POLICY_ACL_NAME  = "pol_ipv4"
     CPM_USER                = "admin"
@@ -763,8 +803,8 @@ def my_main() :
 
     # Policy 
     # -------------------------
-    # cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_POLICY_NAME, '1.2.3.4', operation = "")
-    cmd_set_acl_policy__deny_src_ip(dut_conn, ACL_POLICY_NAME, '1.2.3.4', operation = "operation=\"delete\"")
+    # cmd_set_acl_policy__r1_deny_default_permit__src_ip(dut_conn, ACL_POLICY_NAME, '1.2.3.4', operation = "")
+    cmd_set_acl_policy__r1_deny_default_permit__src_ip(dut_conn, ACL_POLICY_NAME, '1.2.3.4', operation = "operation=\"delete\"")
     sys.exit(0)
 
     # x-eth acl rule

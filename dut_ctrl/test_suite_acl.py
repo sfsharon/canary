@@ -221,7 +221,8 @@ def test_TC00_Setup_Environment(ssh_client, netconf_client):
     # ----------------------------------------------------------
     physical_port_ip    = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     physical_port_num   = constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM']
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
+    canary_acl_policy_name__r1_permit_default_deny  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_PERMIT_DEFAULT_DENY']
 
     # If there is an acl in policy attached to interface, delete it 
     # ---------------------------------------------------------------        
@@ -244,14 +245,18 @@ def test_TC00_Setup_Environment(ssh_client, netconf_client):
     if acl_ctrl_plane_nni_ingress_policy_name != None :
         _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_ctrl_plane_nni_ingress_policy_name, InterfaceOp.DETACH) 
 
-    # Create acl policy canary_acl_policy_name
-    # ----------------------------------------------------------    
-    # Delete operation may return False, if the object did not exist in the first place
-    netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, canary_acl_policy_name, physical_port_ip, operation = "operation=\"delete\"")
+    # Create acl policies canary_acl_policy_name__r1_deny_default_permit, canary_acl_policy_name__r1_permit_default_deny
+    # ---------------------------------------------------------------------------------------------------------------------    
+    # Delete operation. may return False, if the object did not exist in the first place
+    netconf_comm.cmd_set_acl_policy__r1_deny_default_permit__src_ip(netconf_client, canary_acl_policy_name__r1_deny_default_permit, physical_port_ip, operation = "operation=\"delete\"")
+    netconf_comm.cmd_set_acl_policy__r1_permit_default_deny__src_ip(netconf_client, canary_acl_policy_name__r1_permit_default_deny, physical_port_ip, operation = "operation=\"delete\"")    
     # Create operation should always succeed.
-    rv = netconf_comm.cmd_set_acl_policy__deny_src_ip(netconf_client, canary_acl_policy_name, physical_port_ip, operation = "")
+    rv = netconf_comm.cmd_set_acl_policy__r1_deny_default_permit__src_ip(netconf_client, canary_acl_policy_name__r1_deny_default_permit, physical_port_ip, operation = "")
     if rv == False :
-        raise Exception ("Failed committing cmd_set_acl_policy__deny_src_ip")
+        raise Exception ("Failed committing cmd_set_acl_policy__r1_deny_default_permit__src_ip")
+    rv = netconf_comm.cmd_set_acl_policy__r1_permit_default_deny__src_ip(netconf_client, canary_acl_policy_name__r1_permit_default_deny, physical_port_ip, operation = "")
+    if rv == False :
+        raise Exception ("Failed committing cmd_set_acl_policy__r1_permit_default_deny__src_ip")
     
     # Initial test TC00 should always succeed
     assert True
@@ -259,7 +264,7 @@ def test_TC00_Setup_Environment(ssh_client, netconf_client):
 # ***************************************************************************************
 # Test Case #1 - ACL in
 # ***************************************************************************************
-def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
+def test_TC01_rule_r1_deny_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test deny on acl rule R1 :
         1. Attach policy to interface
@@ -268,7 +273,7 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
         3. Detach policy to interface
            (Using Netconf)
     """
-    logging.info("test_TC01_rule_r1_acl_in")
+    logging.info("test_TC01_rule_r1_deny_acl_in")
     
     import configparser
 
@@ -280,16 +285,16 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_R1']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
     rule_name = "r1"
     workdir = constants['DUT_ENV']['WORKDIR']
     num_of_tx = '142'
 
     # Attach acl in policy to interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.ATTACH) 
     if rv == False :
-        raise Exception (f"Failed attaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed attaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 
     # Perform test
     # ---------------------------------------------------------------------------        
@@ -301,20 +306,20 @@ def test_TC01_rule_r1_acl_in(ssh_client, netconf_client, cli_client) :
                                      InterfaceType.X_ETH,
                                      workdir,
                                      physical_port_num,  
-                                     canary_acl_policy_name,
+                                     canary_acl_policy_name__r1_deny_default_permit,
                                      rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name, InterfaceOp.DETACH) 
+    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.DETACH) 
     if rv == False :
-        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed detaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 
-def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
+def test_TC02_default_rule_permit_acl_in(ssh_client, netconf_client, cli_client) :
     """
     Test permit on acl default rule
     """
-    logging.info("test_TC02_default_rule_acl_in")
+    logging.info("test_TC02_default_rule_permit_acl_in")
     
     import configparser
 
@@ -326,16 +331,16 @@ def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
     src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
     rule_name = "rule-default"
     workdir = constants['DUT_ENV']['WORKDIR']
     num_of_tx = '143'
 
     # Attach acl in policy to interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.ATTACH) 
     if rv == False :
-        raise Exception (f"Failed attaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed attaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 
     # Perform test
     # ---------------------------------------------------------------------------        
@@ -347,20 +352,20 @@ def test_TC02_default_rule_acl_in(ssh_client, netconf_client, cli_client) :
                                      InterfaceType.X_ETH,
                                      workdir,
                                      physical_port_num,  
-                                     canary_acl_policy_name,
+                                     canary_acl_policy_name__r1_deny_default_permit,
                                      rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name, InterfaceOp.DETACH) 
+    rv = _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.DETACH) 
     if rv == False :
-        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed detaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 
-def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+def test_TC03_acl_rule_r1_deny_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
-    logging.info("test_TC03_acl_rule_r1_ctrl_plane_egress")
+    logging.info("test_TC03_acl_rule_r1_deny_ctrl_plane_egress")
     
     import configparser
 
@@ -375,7 +380,7 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
     
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
     workdir = constants['DUT_ENV']['WORKDIR']    
     num_of_tx = '87'
 
@@ -383,9 +388,9 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
 
     # Attach acl policy to acl egress ctrl-plane
     # ---------------------------------------------------------------------------        
-    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.ATTACH) 
     if rv == False :
-        raise Exception (f"Failed attaching {canary_acl_policy_name} to ctrl-plane {ctrl_plane_type}")
+        raise Exception (f"Failed attaching {canary_acl_policy_name__r1_deny_default_permit} to ctrl-plane {ctrl_plane_type}")
 
     # Perform test
     # ---------------------------------------------------------------------------        
@@ -397,20 +402,20 @@ def test_TC03_acl_rule_r1_ctrl_plane_egress(ssh_client, netconf_client, cli_clie
                                      InterfaceType.CTRL_PLANE,
                                      workdir,
                                      physical_port_num,  
-                                     canary_acl_policy_name,
+                                     canary_acl_policy_name__r1_deny_default_permit,
                                      rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.DETACH) 
     if rv == False :
-        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed detaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 
-def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+def test_TC04_acl_rule_default_permit_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule default on acl ctrl-plane egress
     """
-    logging.info("test_TC04_acl_rule_default_ctrl_plane_egress")
+    logging.info("test_TC04_acl_rule_default_permit_ctrl_plane_egress")
     
     import configparser
 
@@ -424,7 +429,7 @@ def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli
     
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
     rule_name = "rule-default"
     workdir = constants['DUT_ENV']['WORKDIR']    
     num_of_tx = '75'
@@ -433,9 +438,9 @@ def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli
 
     # Attach acl policy to acl egress ctrl-plane
     # ---------------------------------------------------------------------------        
-    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.ATTACH) 
     if rv == False :
-        raise Exception (f"Failed attaching {canary_acl_policy_name} to ctrl-plane {ctrl_plane_type}")
+        raise Exception (f"Failed attaching {canary_acl_policy_name__r1_deny_default_permit} to ctrl-plane {ctrl_plane_type}")
 
     # Perform test
     # ---------------------------------------------------------------------------        
@@ -447,20 +452,72 @@ def test_TC04_acl_rule_default_ctrl_plane_egress(ssh_client, netconf_client, cli
                                      InterfaceType.CTRL_PLANE,
                                      workdir,
                                      physical_port_num,  
-                                     canary_acl_policy_name,
+                                     canary_acl_policy_name__r1_deny_default_permit,
                                      rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.DETACH) 
     if rv == False :
-        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed detaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 
-def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
+def test_TC05_acl_rule_default_deny_ctrl_plane_egress(ssh_client, netconf_client, cli_client) :
+    """
+    Test deny rule default on acl ctrl-plane egress. 
+    Solves issue EM-2638, in develop build b532
+    """
+    logging.info("test_TC05_acl_rule_default_deny_ctrl_plane_egress")
+    
+    import configparser
+
+    # Read globals from ini file
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+
+    physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
+    
+    src_ip  = constants['TEST_SUITE_ACL']['SRC_IP_RULE_DEFAULT']
+    
+    dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
+    dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
+    canary_acl_policy_name__r1_permit_default_deny  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_PERMIT_DEFAULT_DENY']
+    rule_name = "rule-default"
+    workdir = constants['DUT_ENV']['WORKDIR']    
+    num_of_tx = '32'
+
+    ctrl_plane_type = AclCtrlPlaneType.EGRESS.name.lower()
+
+    # Attach acl policy to acl egress ctrl-plane
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_permit_default_deny, InterfaceOp.ATTACH) 
+    if rv == False :
+        raise Exception (f"Failed attaching {canary_acl_policy_name__r1_permit_default_deny} to ctrl-plane {ctrl_plane_type}")
+
+    # Perform test
+    # ---------------------------------------------------------------------------        
+    _inject_frame_and_verify_counter(ssh_client, 
+                                     cli_client,                                     
+                                     src_ip, dst_ip, dst_mac, 
+                                     num_of_tx,
+                                     FrameType.ICMP_FRAME,
+                                     InterfaceType.CTRL_PLANE,
+                                     workdir,
+                                     physical_port_num,  
+                                     canary_acl_policy_name__r1_permit_default_deny,
+                                     rule_name)
+
+    # Detach acl in policy from interface
+    # ---------------------------------------------------------------------------        
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_permit_default_deny, InterfaceOp.DETACH) 
+    if rv == False :
+        raise Exception (f"Failed detaching {canary_acl_policy_name__r1_permit_default_deny} from interface {physical_port_num}")
+
+
+def test_TC06_acl_rule_r1_deny_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli_client) :
     """
     Test deny rule r1 on acl ctrl-plane egress
     """
-    logging.info("test_TC05_acl_rule_r1_ctrl_plane_nni_ingress")
+    logging.info("test_TC06_acl_rule_r1_deny_ctrl_plane_nni_ingress")
     
     import configparser
 
@@ -475,7 +532,7 @@ def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli
     
     dst_ip  = constants['TEST_SUITE_ACL']['DST_IP']
     dst_mac = constants['TEST_SUITE_ACL']['DST_MAC']
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
     workdir = constants['DUT_ENV']['WORKDIR']    
     num_of_tx = '123'
 
@@ -483,9 +540,9 @@ def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli
 
     # Attach acl policy to acl egress ctrl-plane
     # ---------------------------------------------------------------------------        
-    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.ATTACH) 
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.ATTACH) 
     if rv == False :
-        raise Exception (f"Failed attaching {canary_acl_policy_name} to ctrl-plane {ctrl_plane_type}")
+        raise Exception (f"Failed attaching {canary_acl_policy_name__r1_deny_default_permit} to ctrl-plane {ctrl_plane_type}")
 
     # Perform test
     # ---------------------------------------------------------------------------        
@@ -497,12 +554,12 @@ def test_TC05_acl_rule_r1_ctrl_plane_nni_ingress(ssh_client, netconf_client, cli
                                      InterfaceType.CTRL_PLANE,
                                      workdir,
                                      physical_port_num,  
-                                     canary_acl_policy_name,
+                                     canary_acl_policy_name__r1_deny_default_permit,
                                      rule_name)
 
     # Detach acl in policy from interface
     # ---------------------------------------------------------------------------        
-    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name, InterfaceOp.DETACH) 
+    rv = _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, canary_acl_policy_name__r1_deny_default_permit, InterfaceOp.DETACH) 
     if rv == False :
-        raise Exception (f"Failed detaching {canary_acl_policy_name} from interface {physical_port_num}")
+        raise Exception (f"Failed detaching {canary_acl_policy_name__r1_deny_default_permit} from interface {physical_port_num}")
 

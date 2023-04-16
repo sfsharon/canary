@@ -492,16 +492,16 @@ def _test_get_counters() :
     constants.read('config.ini')
     dut_number = constants['GENERAL']['DUT_NUM']
     physical_port_num = int(constants['TEST_SUITE_ACL']['PHYSICAL_PORT_NUM'])
-    canary_acl_policy_name  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME']
+    canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
 
     # Open CLI connection
     cli_comm = open_cpm_session(dut_number)
 
     # Read counters
-    counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "r1")
+    counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name__r1_deny_default_permit, "r1")
     print (f"Rule: r1, GOT : {counter}")
 
-    counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name, "rule-default")
+    counter = get_show_counter (cli_comm, physical_port_num, InterfaceType.CTRL_PLANE, canary_acl_policy_name__r1_deny_default_permit, "rule-default")
     print (f"Rule: default, GOT : {counter}")
 
 def _test_get_install_file_name():

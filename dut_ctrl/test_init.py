@@ -8,7 +8,11 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 import paramiko
-from fixtures import run_local_shell_cmd, wait_for_onl_after_reboot, copy_files_from_local_to_dut, ssh_client, run_remote_shell_cmd
+from fixtures import run_local_shell_cmd,               \
+                     wait_for_onl_after_reboot,         \
+                     copy_files_from_local_to_dut,      \
+                     ssh_client, run_remote_shell_cmd,  \
+                     ssh_client__no_cpm_conn_reset
 
 # ***************************************************************************************
 # Helper functions
