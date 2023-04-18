@@ -139,7 +139,8 @@ def copy_files_from_local_to_dut(dut_num, local_files_list, remote_dut_path):
     Hidden assumption : That id_rsa.pub file has been created in DEV machine using ssh-keygen and copied to DUT using ssh-copy-id,
                         so that no password prompt is given 
     """
-    logging.info(f"copy_files_from_local_to_dut")
+    from cli_control import get_time
+    logging.info(f"{get_time()} copy_files_from_local_to_dut")
 
     for file in local_files_list :
         command = f"scp {file} root@10.3.{dut_num[-2:]}.10:{remote_dut_path}"

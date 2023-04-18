@@ -52,7 +52,7 @@ def _link_build_to_onie_installer(device_num, device_type, build_num) :
 
     build_file_name = get_official_install_file_name(output, build_num)
     
-    logging.info(f"Build: {build_num}, File name: {build_file_name}")
+    logging.info(f"{get_time()} Build: {build_num}, File name: {build_file_name}")
 
     # 2. Link formal build to device device_num onie-installer
     device_install_path = f'/home/tftp/onie/exa-il01-{device_type}-30{device_num[-2:]}'
@@ -371,12 +371,12 @@ def test_init_TC06_verify_cpm_ready() :
     rv = _wait_cpm_and_lc_card_ready()
 
     if  rv == False :
-        logging.info (f"{get_time()} CPM and LC did not reach CARD_READY during timeout. Inspecting bcmrm_bsl log file")
+        logging.error (f"{get_time()} CPM and LC did not reach CARD_READY during timeout. Inspecting bcmrm_bsl log file")
         _verify_onl_up(wait_timeout_for_onl_to_boot_minutes=6)
         bcmrm_error = _get_bcmrm_error(dut_num, temp_dir)
 
         if bcmrm_error is BcmrmErrors.DMA_ERROR :
-            logging.info (f"{get_time()} bcmrm_bsl log file shows there was a DMA error. Rebooting again.")
+            logging.error (f"{get_time()} bcmrm_bsl log file shows there was a DMA error. Rebooting again.")
 
             reboot_dut(device_number = dut_num, is_set_install_mode = False)
             _verify_onl_up(wait_timeout_for_onl_to_boot_minutes=11)
