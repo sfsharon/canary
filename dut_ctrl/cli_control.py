@@ -311,7 +311,7 @@ def reboot_dut(device_number, is_set_install_mode = False):
             cli_comm.expect(f'.*{expected_response}.*')
             
         # Rebooting
-        command = "reboot"
+        command = "/sbin/reboot"
         logging.info(f"{get_time()} Sending \"{command}\"")
         cli_comm.sendline(command)
     except pexpect.exceptions.TIMEOUT :
