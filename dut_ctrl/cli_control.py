@@ -25,6 +25,32 @@ def _print_system_mod (cli_comm) :
     logging.info("Received results")
     print(cli_comm.after)
 
+def _get_dut_alias_to_cmd (device_num: str, device_type: str, command: str) -> str:
+    """
+    Search the alias_sw_lab_new file for the requested command
+    device_num  : e.g., '3010'
+    device_type : Applicable values : 'dl', 'ec', 'al', 'uf'
+    command     : Applicable values : 'm', 'o', 'off', 'on', 'reset', 's', 'sc' 
+    """
+    import re
+
+    alias_file = '/home/exaware/alias_sw_lab_new'
+    dev_specific_num = device_num[-2:]
+    
+    with open(alias_file, 'r') as f:
+        text = f.read()
+
+    full_command = f"alias exa-il01-{device_type}-30{dev_specific_num}-{command}"
+    pattern = f"{full_command}='(.*)'"
+
+    matches = re.findall(pattern, text)
+
+    if len(matches) != 1 :
+        raise Exception (f"Could not find command {full_command} in alias file {alias_file}")
+    
+    print(f"Command {full_command} in aliased to {matches[0]}")
+    return matches[0]
+
 def get_official_install_file_name(cli_response, build_number) :
     """
     Input: cli_response - Output from command "ls" for build files 
@@ -108,7 +134,7 @@ def _parse_show_counter(cli_response, policy_name, rule_name) :
             else :
                 raise Exception (f"Unrecognized Rule name: {rule_name}")
 
-def _reset_serial_server_connection(device_number) :
+def _reset_serial_server_connection(device_number, device_type) :
     """
     Issue from Dev machine command "exa-il01-dl-3010-sc"
     exa-il01-dl-3010-sc is aliased to `ts-cl 10.1.10.253 hw-lab-gw-1 lab lab 91'
@@ -124,8 +150,11 @@ def _reset_serial_server_connection(device_number) :
     """    
     logging.info(f"{get_time()} Disconnect the serial server from the DUT")
     import subprocess
-    command = f'ts-cl 10.1.{device_number[-2:]}.253 hw-lab-gw-1 lab lab 91' 
-    logging.info(f"{get_time()} Command: {command}")
+
+    dut_cmd = "sc"
+    command = _get_dut_alias_to_cmd(device_number, device_type, dut_cmd)
+
+    logging.info(f"{get_time()} Reset serial server connection for device number: {device_number}, type: {device_type}")
 
     process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
@@ -141,7 +170,7 @@ def get_time() :
     current_time = time.strftime("%H:%M:%S", time.localtime())
     return current_time
 
-def reset_dut_connections(device_number: str, is_reset_cpm_connection: bool) -> None :
+def reset_dut_connections(device_number: str, device_type: str, is_reset_cpm_connection: bool) -> None :
     """
     1. Reset serial server connection, so that if another client is connected, it would be kicked out.
     2. Send "dhclient ma1" on ONL CLI for fixing management communication to IP 10.3.XX.10 (needed for DUT CLI commands),
@@ -159,8 +188,6 @@ def reset_dut_connections(device_number: str, is_reset_cpm_connection: bool) -> 
 
                 root@localhost:~#
     """
-    SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
-    
     CPM_PROMPT  = f"R{device_number}"
     ONL_PROMPT  = f"root@localhost:~#"
     TIMEOUT     = 20
@@ -170,14 +197,14 @@ def reset_dut_connections(device_number: str, is_reset_cpm_connection: bool) -> 
     logging.info(f"{get_time()} Begin reset_dut_connections")
 
     # 1. Disconnect other client if connected to serial server 
-    _reset_serial_server_connection(device_number)
+    _reset_serial_server_connection(device_number, device_type)
 
     try :
         # 2. Telnet into the machine using the serial server and send "dhclient ma1"
-        logging.info(f"{get_time()} Opening ONL CLI connection to device {device_number}")
-        cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
-                                   encoding='utf-8',
-                                   timeout=TIMEOUT)
+        logging.info(f"{get_time()} Opening ONL CLI connection to device number: {device_number}, device type: {device_type}")
+        dut_cmd = "s"
+        command = _get_dut_alias_to_cmd(device_number, device_type, dut_cmd)
+        cli_comm = pexpect.spawn(command, encoding='utf-8', timeout=TIMEOUT, codec_errors='ignore')
 
         # Wait for the password prompt and enter the password
         logging.info(f"{get_time()} Waiting for Serial server prompt")
@@ -257,10 +284,9 @@ def reset_dut_connections(device_number: str, is_reset_cpm_connection: bool) -> 
     
     logging.info(f"{get_time()} End reset_dut_connections")
 
-def reboot_dut(device_number, is_set_install_mode = False):
+def reboot_dut(device_number, device_type, is_set_install_mode = False):
     """
     """
-    SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
     CPM_PROMPT  = f"R{device_number}"
     ONL_PROMPT  = f"root@localhost:~#"
     TIMEOUT     = 5
@@ -269,15 +295,14 @@ def reboot_dut(device_number, is_set_install_mode = False):
     logging.info(f"{get_time()} Begin set_install_mode_and_reboot_dut")
 
     # 1. Disconnect other client if connected to serial server 
-    _reset_serial_server_connection(device_number)
+    _reset_serial_server_connection(device_number, device_type)
 
     try :
         # 2. Telnet into the machine using the serial server
-        logging.info(f"{get_time()} Opening ONL CLI connection to device {device_number}")
-        cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
-                                   encoding='utf-8',
-                                   timeout=TIMEOUT,
-                                   codec_errors='ignore')
+        logging.info(f"{get_time()} Opening ONL CLI connection to device number: {device_number}, device type: {device_type}")
+        dut_cmd = "s"
+        command = _get_dut_alias_to_cmd(device_number, device_type, dut_cmd)                                 
+        cli_comm = pexpect.spawn(command, encoding='utf-8', timeout=TIMEOUT, codec_errors='ignore')
 
         # Wait for the password prompt and enter the password
         logging.info(f"{get_time()} Waiting for Serial server prompt")
@@ -322,10 +347,9 @@ def reboot_dut(device_number, is_set_install_mode = False):
 
     logging.info(f"{get_time()} End reset_dut_connections")
 
-def add_dev_machine_ssh_key_to_dut(device_number):
+def add_dev_machine_ssh_key_to_dut(device_number, device_type):
     """
     """
-    SERIAL_SERVER_ADDRESS = f"10.1.{device_number[-2:]}.253"
     CPM_PROMPT  = f"R{device_number}"
     ONL_PROMPT  = f"root@localhost:~#"
     TIMEOUT     = 5
@@ -334,15 +358,14 @@ def add_dev_machine_ssh_key_to_dut(device_number):
     logging.info(f"{get_time()} add_dev_machine_ssh_key_to_dut")
 
     # 1. Disconnect other client if connected to serial server 
-    _reset_serial_server_connection(device_number)
+    _reset_serial_server_connection(device_number, device_type)
 
     try :
         # 2. Telnet into the machine using the serial server
-        logging.info(f"{get_time()} Opening ONL CLI connection to device {device_number}")
-        cli_comm = pexpect.spawn(f'telnet {SERIAL_SERVER_ADDRESS} 2091', 
-                                   encoding='utf-8',
-                                   timeout=TIMEOUT,
-                                   codec_errors='ignore')
+        logging.info(f"{get_time()} Opening ONL CLI connection to device number: {device_number}, device type: {device_type}")
+        dut_cmd = "s"
+        command = _get_dut_alias_to_cmd(device_number, device_type, dut_cmd) 
+        cli_comm = pexpect.spawn(command, encoding='utf-8', timeout=TIMEOUT, codec_errors='ignore')
 
         # Wait for the password prompt and enter the password
         logging.info(f"{get_time()} Waiting for Serial server prompt")
@@ -404,7 +427,8 @@ def open_cpm_session(device_number):
         logging.info(f"{get_time()} Opening CPM CLI connection to device {device_number}")
         cli_comm = pexpect.spawn(f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {CPM_ADDRESS} -l admin', 
                                   encoding='utf-8',
-                                  timeout=TIMEOUT)
+                                  timeout=TIMEOUT,
+                                  codec_errors='ignore')
 
         # Wait for the password prompt and enter the password
         logging.info(f"{get_time()} Waiting for password prompt")

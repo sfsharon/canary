@@ -88,12 +88,13 @@ def _verify_onl_up(wait_timeout_for_onl_to_boot_minutes) :
     from cli_control import get_time, reset_dut_connections
     import configparser
 
-    logging.info (f"{get_time()} test_init_TC05_verify_dut_up")
+    logging.info (f"{get_time()} _verify_onl_up")
 
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
+    dut_type = constants['GENERAL']['DUT_TYPE']
 
     # Waiting for WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES minutes for the system to finish initialization
     # WAIT_PERIOD_FOR_DUT_START_BOOT_MINUTES = 11
@@ -104,7 +105,7 @@ def _verify_onl_up(wait_timeout_for_onl_to_boot_minutes) :
         logging.info(f"{get_time()} Waited {minutes_waited} minutes for the DUT to boot")
 
     logging.info(f"{get_time()} Starting to poll ONL IP to test if it is up.")
-    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
+    reset_dut_connections(device_number = dut_num, device_type = dut_type, is_reset_cpm_connection = False)
     rv = wait_for_onl_after_reboot()
 
     assert rv == True
@@ -126,8 +127,9 @@ def _wait_cpm_and_lc_card_ready() -> bool:
     constants = configparser.ConfigParser()
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
+    dut_type = constants['GENERAL']['DUT_TYPE']
 
-    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
+    reset_dut_connections(device_number = dut_num, device_type = dut_type, is_reset_cpm_connection = False)
 
     temp_dir               = './temp'
     card_state_remote_dir  = '/vbox/cpm_image/root/var/log'
@@ -220,6 +222,7 @@ def test_init_TC01_installing_build_and_reboot() :
     constants.read('config.ini')
     device_type = constants['GENERAL']['DUT_TYPE']
     dut_num = constants['GENERAL']['DUT_NUM']
+    dut_type = constants['GENERAL']['DUT_TYPE']
 
     if constants.has_option('GENERAL', 'TEST_BUILD_NUMBER'):
         build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
@@ -229,20 +232,19 @@ def test_init_TC01_installing_build_and_reboot() :
     logging.info(f"{get_time()} Prepare install soft link to point to the required build file")
     _link_build_to_onie_installer(dut_num, device_type, build_number)
 
-    reboot_dut(device_number = dut_num, is_set_install_mode = True)
+    reboot_dut(device_number = dut_num, device_type = dut_type, is_set_install_mode = True)
 
 # ***************************************************************************************
 # Test Case #02 - Wait for DUT to boot, and replace script startagent
 # ***************************************************************************************
 def test_init_TC02_verify_dut_up() :
     """
-    1. Verify the dut responds to ssh port on onl interface
-    2. WIP - Verify that for command "show system module" (show sys mod) both lc and cpm are "Card-Ready"
+    Verify the dut responds to ssh port on onl interface
     """
     from cli_control import get_time
 
     logging.info (f"{get_time()} test_init_TC02_verify_dut_up")
-    _verify_onl_up(wait_timeout_for_onl_to_boot_minutes = 6)
+    _verify_onl_up(wait_timeout_for_onl_to_boot_minutes = 11)
 
 # ***************************************************************************************
 # Test Case #03 - 
@@ -265,7 +267,8 @@ def test_init_TC03_update_build_mode(ssh_client__no_cpm_conn_reset: paramiko.SSH
     # Read globals from ini file
     constants = configparser.ConfigParser()
     constants.read('config.ini')
-    dut_num = constants['GENERAL']['DUT_NUM']
+    dut_num  = constants['GENERAL']['DUT_NUM']
+    dut_type = constants['GENERAL']['DUT_TYPE']
     from cli_control import add_dev_machine_ssh_key_to_dut
 
     # Get build mode
@@ -283,7 +286,7 @@ def test_init_TC03_update_build_mode(ssh_client__no_cpm_conn_reset: paramiko.SSH
         raise Exception(f"{get_time()} Failed with rv {rv}, when running remote command \"{command}\"")
 
     # Create ssh key of DEV machine in dut
-    add_dev_machine_ssh_key_to_dut(dut_num)
+    add_dev_machine_ssh_key_to_dut(dut_num, dut_type)
 
 # ***************************************************************************************
 # Test Case #04 - Rebooting (Duplicate of TC01)
@@ -303,8 +306,9 @@ def test_init_TC04_reboot() :
     constants = configparser.ConfigParser()
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
+    dut_type = constants['GENERAL']['DUT_TYPE']
 
-    reboot_dut(device_number = dut_num, is_set_install_mode = False)
+    reboot_dut(device_number = dut_num, device_type = dut_type, is_set_install_mode = False)
 
 # ***************************************************************************************
 # Test Case #05 - Wait for DUT to boot (duplicate of TC02)
@@ -335,7 +339,8 @@ def test_init_TC06_verify_cpm_ready() :
     constants = configparser.ConfigParser()
     constants.read('config.ini')
     dut_num = constants['GENERAL']['DUT_NUM']
-    
+    dut_type = constants['GENERAL']['DUT_TYPE']
+
     if constants.has_option('GENERAL', 'TEST_BUILD_NUMBER'):
         test_build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
         logging.info (f"{get_time()} Using user defined build number: {test_build_number}")
@@ -345,7 +350,7 @@ def test_init_TC06_verify_cpm_ready() :
         test_build_number = get_official_latest_build(output)
         logging.info (f"{get_time()} Using latest build number: {test_build_number}")
 
-    reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = False)
+    reset_dut_connections(device_number = dut_num, device_type = dut_type, is_reset_cpm_connection = False)
 
     temp_dir               = './temp'
     build_param_remote_dir = '/vbox/cpm_image/root/opt/compass'
@@ -355,9 +360,11 @@ def test_init_TC06_verify_cpm_ready() :
     if os.path.exists(temp_dir):
         logging.info(f'{get_time()} Deleting existing {temp_dir} folder')
         shutil.rmtree(temp_dir)
+    
+    logging.info(f'{get_time()} Finished Deleting {temp_dir} folder, creating a new one')
     os.makedirs(temp_dir)
 
-    # Copy files to locally temp dir
+    logging.info(f'{get_time()} Copy files to locally temp dir')
     copy_files_from_dut_to_local(dut_num, build_param_remote_dir, build_param_file, temp_dir)
 
     # Verify that the correct version has been installed
@@ -378,7 +385,7 @@ def test_init_TC06_verify_cpm_ready() :
         if bcmrm_error is BcmrmErrors.DMA_ERROR :
             logging.error (f"{get_time()} bcmrm_bsl log file shows there was a DMA error. Rebooting again.")
 
-            reboot_dut(device_number = dut_num, is_set_install_mode = False)
+            reboot_dut(device_number = dut_num, device_type = dut_type, is_set_install_mode = False)
             _verify_onl_up(wait_timeout_for_onl_to_boot_minutes=11)
             rv = _wait_cpm_and_lc_card_ready()
             if rv == False :

@@ -118,10 +118,11 @@ def _create_ssh_client(is_reset_cpm_connection):
     constants.read('config.ini')
     host_onl = constants['COMM']['HOST_ONL']
     dut_num = constants['GENERAL']['DUT_NUM']
+    dut_type = constants['GENERAL']['DUT_TYPE']
 
     # Reset the Managament interface 10.3.XX.10 (host_onl) by sending "dhclient ma1" in ONL CLI,
     # and CPM interface (10.3.XX.1) by sending ping to vrf management in the DUT CLI, using the serial server 
-    cli_control.reset_dut_connections(device_number = dut_num, is_reset_cpm_connection = is_reset_cpm_connection)
+    cli_control.reset_dut_connections(device_number = dut_num, device_type = dut_type, is_reset_cpm_connection = is_reset_cpm_connection)
 
     # Connecting over SSH and Managament interface 10.3.XX.10 (host_onl) to the device
     client = paramiko.SSHClient()
