@@ -35,7 +35,7 @@ def create_icmp_frame(src_ip, dst_ip, dst_mac) :
     frame = Ether(dst = dst_mac) / IP(src = src_ip, dst = dst_ip) / ICMP()
     return bytes(frame).hex()
 
-def create_l3_dscp_frame(src_ip: str, dst_ip: str, dst_mac: str , tos->int) -> bytes :
+def create_l3_dscp_frame(src_ip: str, dst_ip: str, dst_mac: str , tos: int) -> bytes :
     """
     Create a frame
     Return value : String representation of the hex frame value
