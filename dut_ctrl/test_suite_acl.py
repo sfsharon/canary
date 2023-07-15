@@ -65,7 +65,7 @@ def _inject_frame_and_verify_counter(ssh_client,
 
     logging.info(f"{get_time()} _inject_frame_and_verify_counter")
     
-    # BCM port number is 1 larger then app values (x-eth 0/0/23 is BCM port 24)
+    # BCM port number is 1 larger then app values (e.g, x-eth 0/0/23 is BCM port 24)
     bcm_port_num = str(int(physical_port_num) + 1) 
     
     # 1. Generate the Byte hex representation of the frame, needed for transmission into the SDK :
@@ -100,7 +100,7 @@ def _inject_frame_and_verify_counter(ssh_client,
 
 def _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, acl_policy_name, interface_op) :
     """
-    Perform attach / detach operation of an ACL in policy on interface physical_port_num.
+    Perform attach / detach operation of an ACL ingress policy on interface physical_port_num.
     Input:  netconf_client
             physical_port_num - Integer
             acl_policy_name - String
@@ -124,7 +124,7 @@ def _acl_in_policy_Operation_on_interface (netconf_client, physical_port_num, ac
 
 def _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_policy_name, interface_op) :
     """
-    Perform attach / detach operation of an ACL in policy on acl ctrl-plane.
+    Perform attach / detach operation of an ACL policy on acl ctrl-plane.
     Input:  netconf_client
             ctrl_plane_type - String. Possible values: EGRESS or NNI_INGRESS
             acl_policy_name - String
@@ -180,14 +180,11 @@ def cli_client():
 # ***************************************************************************************
 def test_TC00_Setup_Environment(ssh_client, netconf_client):
     """
-    Setup configured policy :
-    1. Read global variables from config.ini file
-    2. if interface physical_port_num contains acl in policy, delete it
-       (Using Netconf)
-    2. Create a new ACL policy named acl_policy_name (delete old one, create new one)
-       (Using Netconf)
-    3. Attach new policy to interface physical_port_num
-       (Using Netconf)
+    Setup configuration of policy :
+        1. Read global variables from config.ini file
+        2. If interface physical_port_num contains acl ingress policy, delete it
+        2. Create a new ACL policy named acl_policy_name (delete old one, create new one)
+        3. Attach new policy to interface physical_port_num
     """
     import configparser
     import netconf_comm
@@ -224,8 +221,8 @@ def test_TC00_Setup_Environment(ssh_client, netconf_client):
     canary_acl_policy_name__r1_deny_default_permit  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_DENY_DEFAULT_PERMIT']
     canary_acl_policy_name__r1_permit_default_deny  = constants['TEST_SUITE_ACL']['ACL_POLICY_NAME_R1_PERMIT_DEFAULT_DENY']
 
-    # If there is an acl in policy attached to interface, delete it 
-    # ---------------------------------------------------------------        
+    # If there is an acl ingress policy attached to interface, delete it 
+    # -------------------------------------------------------------------        
     x_eth_name         = "0/0/" + physical_port_num 
     acl_policy_name    = netconf_comm.cmd_get_policy_acl_in_name(netconf_client, x_eth_name)
     if acl_policy_name != None :
@@ -240,7 +237,7 @@ def test_TC00_Setup_Environment(ssh_client, netconf_client):
 
     # If there is an acl nni_ingress ctrl-plane configured, delete it 
     # ---------------------------------------------------------------        
-    ctrl_plane_type = AclCtrlPlaneType.NNI_INGRESS.name.lower()
+    ctrl_plane_type = AclCtrlPlaneType.NNI_INGRESS.name.lower().replace('_', '-')       # Replace function is due to EM-3647
     acl_ctrl_plane_nni_ingress_policy_name = netconf_comm.cmd_get_ctrl_plane_acl_name(netconf_client, ctrl_plane_type)
     if acl_ctrl_plane_nni_ingress_policy_name != None :
         _acl_ctrl_plane_policy_Operation (netconf_client, ctrl_plane_type, acl_ctrl_plane_nni_ingress_policy_name, InterfaceOp.DETACH) 
@@ -536,7 +533,7 @@ def test_TC06_acl_rule_r1_deny_ctrl_plane_nni_ingress(ssh_client, netconf_client
     workdir = constants['DUT_ENV']['WORKDIR']    
     num_of_tx = '123'
 
-    ctrl_plane_type = AclCtrlPlaneType.NNI_INGRESS.name.lower()
+    ctrl_plane_type = AclCtrlPlaneType.NNI_INGRESS.name.lower().replace('_', '-')   # Replace function is due to EM-3647
 
     # Attach acl policy to acl egress ctrl-plane
     # ---------------------------------------------------------------------------        

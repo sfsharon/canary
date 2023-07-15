@@ -709,7 +709,7 @@ def cmd_get_policy_acl_in_name(dut_conn, interface) :
 def cmd_get_ctrl_plane_acl_name(dut_conn, ctrl_plane_acl_type) :
     """Get acl in policy of interface
     Input : dut_conn  - DUT connection
-            interface - String that holds control plane type. Values can be "egress" or "nni_ingress" 
+            interface - String that holds control plane type. Values can be "egress" or "nni-ingress" 
     Return value : Ctrl-plane ACL name
     """
     CTRL_PLANE_ACL_PATH_LIST   = ["ctrl-plane", "policy", "acl"]
