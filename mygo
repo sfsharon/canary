@@ -1,0 +1,4 @@
+#scp ./dut_ctrl/test_suite_acl.py sharonf@172.30.16.107:/home/sharonf/workspace/canary/dut_ctrl/
+#scp ./dut_ctrl/packet_creator.py sharonf@172.30.16.107:/home/sharonf/workspace/canary/dut_ctrl/
+scp ./tate/example.php sharonf@172.30.16.107:/auto/automation/tate/www/experiment
+
