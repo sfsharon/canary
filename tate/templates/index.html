@@ -50,33 +50,23 @@
 </head>
 <body>
     <h1>Simple Flask App</h1>
-    <form method="post">
-        <label for="option1">Select column to sort by:</label>
-        <select id="option1" name="option1">
-            {% for option in options1 %}
-                <option value="{{ option }}">{{ option }}</option>
-            {% endfor %}
-        </select>
-        <label for="option2">Select sort order:</label>
-        <select id="option2" name="option2">
-            {% for option in options2 %}
-                <option value="{{ option }}">{{ option }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit">Sort</button>
-    </form>
-
     <table>
         <tr>
-            <th>Name</th>
-            <th>Age</th>
-            <th>City</th>
+            <th>testbed</th>
+            <th>sw_ver</th>
+            <th>duration</th>
+            <th>started</th>
+            <th>pass</th>
+            <th>fail</th>
         </tr>
         {% for item in data %}
             <tr>
-                <td>{{ item["Name"] }}</td>
-                <td>{{ item["Age"] }}</td>
-                <td>{{ item["City"] }}</td>
+                <td>{{ item["testbed"] }}</td>
+                <td>{{ item["sw_ver"] }}</td>
+                <td>{{ item["duration"] }}</td>
+                <td>{{ item["started"] }}</td>
+                <td>{{ item["pass"] }}</td>
+                <td>{{ item["fail"] }}</td>
             </tr>
         {% endfor %}
     </table>
