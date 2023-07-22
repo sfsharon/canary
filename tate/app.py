@@ -2,40 +2,99 @@
 FLask implementation for querying the Tate database. 
 Using raw ssh command because paramiko and pymysql cannot support the old ssh authentication on MySql "server cmp-dt-srv2"
 """
-from flask import Flask
 
-import logging
-logging.basicConfig(
-                    format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
-                    level=logging.INFO,
-                    datefmt='%H:%M:%S')
+# ------------------------------------------------------------------------------------------
+# Iteration #1: Trivial App
 
-def run_local_shell_cmd(cmd_string) :
-    """
-    Run local shell command
-    """
-    import subprocess
+# from flask import Flask
 
-    logging.info(f"Running command: {cmd_string}")
-    result = subprocess.run(cmd_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    rc = result.returncode
-    output = result.stdout.decode()
-    logging.info(f"Return code: {rc}, Output:\n------------------------------------------------------------------------------------\n {output}")
+# import logging
+# logging.basicConfig(
+#                     format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',                       
+#                     level=logging.INFO,
+#                     datefmt='%H:%M:%S')
 
-    return rc, output
+# def run_local_shell_cmd(cmd_string) :
+#     """
+#     Run local shell command
+#     """
+#     import subprocess
+
+#     logging.info(f"Running command: {cmd_string}")
+#     result = subprocess.run(cmd_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#     rc = result.returncode
+#     output = result.stdout.decode()
+#     logging.info(f"Return code: {rc}, Output:\n------------------------------------------------------------------------------------\n {output}")
+
+#     return rc, output
+
+# app = Flask(__name__)
+
+# DEV_MACHINE_IP   = 'localhost'
+# MYSQL_MACHINE_IP = '192.168.20.53'
+
+# @app.route('/')
+# def hello_world():
+#     query = "select  testbed,sw_ver,duration,started,pass,fail from jobs where testbed is not null limit 10;" 
+#     cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
+#     rc, output = run_local_shell_cmd(cmd)
+#     return output
+
+# if __name__ == '__main__':
+#     # Run the Flask app
+#     app.run(host=DEV_MACHINE_IP, port=5000)
+
+# ------------------------------------------------------------------------------------------
+
+# Iteration #2: App with HTML table
+from flask import Flask, render_template, request
 
 app = Flask(__name__)
 
-DEV_MACHINE_IP   = '172.30.16.107'
-MYSQL_MACHINE_IP = '192.168.20.53'
+# Sample data for the table
+data = [
+    {"Name": "John", "Age": 30, "City": "New York"},
+    {"Name": "Jane", "Age": 25, "City": "Los Angeles"},
+    {"Name": "Bob", "Age": 22, "City": "Chicago"},
+    {"Name": "Alice", "Age": 28, "City": "San Francisco"},
+]
 
-@app.route('/')
-def hello_world():
-    query = "select  testbed,sw_ver,duration,started,pass,fail from jobs where testbed is not null limit 10;" 
-    cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
-    rc, output = run_local_shell_cmd(cmd)
-    return output
 
-if __name__ == '__main__':
-    # Run the Flask app
-    app.run(host=DEV_MACHINE_IP, port=5000)
+@app.route("/", methods=["GET", "POST"])
+def index():
+    options1 = ["Name", "Age", "City"]
+    options2 = ["Ascending", "Descending"]
+
+    if request.method == "POST":
+        # Get selected options from the combo boxes
+        selected_option1 = request.form.get("option1")
+        selected_option2 = request.form.get("option2")
+
+        # Sort the data based on the selected options
+        data.sort(key=lambda x: x[selected_option1], reverse=selected_option2 == "Descending")
+
+    return render_template("index.html", data=data, options1=options1, options2=options2)
+
+from typing import Dict
+def _mysql_output_to_map(input : str) -> Dict [str, str] :
+    return {'me':'you'}
+
+if __name__ == "__main__":
+    """
+    * For sample query :
+        'select  testbed,sw_ver,duration,started,pass,fail from jobs where testbed is not null limit 10;'
+    * Sample Output : 
+        'testbed\tsw_ver\tduration\tstarted\tpass\tfail\nREG1-pc45\tNULL\t900\t2010-11-20 12:52:07\t2\t0\nREG1-pc45\tNULL\t0\t2010-11-20 13:14:00\t0\t0\nREG1-pc45\tNULL\t608\t2010-11-20 13:27:25\t3\t0\nREG2-pc46\tNULL\t625\t2010-11-20 13:27:26\t3\t0\nREG3-pc47\tNULL\t710\t2010-11-20 13:27:27\t3\t0\nREG4-pc13\tNULL\t615\t2010-11-20 13:27:28\t3\t0\nREG1-pc45\tNULL\t652\t2010-11-20 14:00:13\t3\t0\nREG1-pc45\tNULL\t657\t2010-11-20 14:19:16\t3\t0\nREG2-pc46\tNULL\t642\t2010-11-20 14:19:37\t3\t0\nREG3-pc47\tNULL\t725\t2010-11-20 14:19:48\t3\t0\n'
+    * Formatted Sample output :
+        testbed     sw_ver  duration started                pass fail
+        REG1-pc45	NULL	900	     2010-11-20 12:52:07	2	 0
+        REG1-pc45	NULL	0	     2010-11-20 13:14:00	0	 0
+        REG1-pc45	NULL	608	     2010-11-20 13:27:25	3	 0
+    """
+    # Operation program
+    # app.run(debug=True)
+
+    # Debug 
+    sample = 'testbed\tsw_ver\tduration\tstarted\tpass\tfail\nREG1-pc45\tNULL\t900\t2010-11-20 12:52:07\t2\t0\nREG1-pc45\tNULL\t0\t2010-11-20 13:14:00\t0\t0\nREG1-pc45\tNULL\t608\t2010-11-20 13:27:25\t3\t0\nREG2-pc46\tNULL\t625\t2010-11-20 13:27:26\t3\t0\nREG3-pc47\tNULL\t710\t2010-11-20 13:27:27\t3\t0\nREG4-pc13\tNULL\t615\t2010-11-20 13:27:28\t3\t0\nREG1-pc45\tNULL\t652\t2010-11-20 14:00:13\t3\t0\nREG1-pc45\tNULL\t657\t2010-11-20 14:19:16\t3\t0\nREG2-pc46\tNULL\t642\t2010-11-20 14:19:37\t3\t0\nREG3-pc47\tNULL\t725\t2010-11-20 14:19:48\t3\t0\n'
+    table = _mysql_output_to_map(sample)
+    print (table)
