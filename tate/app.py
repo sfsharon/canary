@@ -51,7 +51,7 @@ def _mysql_output_to_map(input : str) -> List[Dict [str, str]] :
 # ***************************************************************************************
 # Main Application
 # ***************************************************************************************
-DEV_MACHINE_IP   = 'localhost'
+DEV_MACHINE_IP   = 'localhost'  # '172.30.16.107'
 MYSQL_MACHINE_IP = '192.168.20.53'
 
 app = Flask(__name__)
@@ -79,4 +79,4 @@ if __name__ == "__main__":
         REG1-pc45	NULL	608	     2010-11-20 13:27:25	3	 0
     """
     # Operation program
-    app.run(debug=False)
+    app.run(debug=False, host=DEV_MACHINE_IP)
