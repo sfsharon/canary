@@ -75,16 +75,35 @@ def index():
         conditions_list = []
         conditions = ""
         # Get input from user
+            # job_id
         job_id    = request.form['job_id']
         if len(job_id) > 0 :
             conditions_list.append(f"job_id = {job_id}")
+            # submitter
         submitter = request.form['submitter']
         if len(submitter) > 0 :
-            conditions_list.append(f"submitter = '{submitter}'")        
+            conditions_list.append(r"submitter LIKE \"" + f"%{submitter}%" + r"\"")
+            # suite
         suite     = request.form['suite']
         if len(suite) > 0 :
-            conditions_list.append(f"suite = '{suite}'")   
+            conditions_list.append(r"suite LIKE \"" + f"%{suite}%" + r"\"")
 
+            # sw_ver
+        sw_ver     = request.form['sw_ver']
+        if len(sw_ver) > 0 :
+            conditions_list.append(r"sw_ver LIKE \"" + f"%{sw_ver}%" + r"\"")
+
+            # branch
+        branch     = request.form['branch']
+        if len(branch) > 0 :
+            conditions_list.append(r"branch LIKE \"" + f"%{branch}%" + r"\"")
+
+            # testbed
+        testbed     = request.form['testbed']
+        if len(testbed) > 0 and testbed != "any":
+            conditions_list.append(r"testbed LIKE \"" + f"%{testbed}%" + r"\"")
+
+        # Combine conditions with AND operator
         if len(conditions_list) > 0 :
             for i, val in enumerate(conditions_list):
                 if   i == 0 : conditions = val
@@ -100,10 +119,13 @@ def index():
             # Build and send SSH command
             cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
             rc, output_mysql = _run_local_shell_cmd(cmd)
-            assert (rc == 0), f"Got rc {rc}"
 
-            # Parse response from MySql server
-            data_parsed = _mysql_output_to_map(output_mysql)    
+            if rc == 0 :
+                logging.info(f"SQL Query '{query}' succeeded")
+                # Parse response from MySql server
+                data_parsed = _mysql_output_to_map(output_mysql)    
+            else :
+                logging.error(f"SQL Query '{query}' return error code {rc}")
 
     # Render HTML
     output = render_template("index.html", data=data_parsed)
