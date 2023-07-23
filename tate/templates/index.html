@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Flask App</title>
+    <title>42</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -49,23 +49,36 @@
     </style>
 </head>
 <body>
-    <h1>Simple Flask App</h1>
+    <h1>Forty-Two</h1>
+    <h2>Search:</h2>
+    <form method="POST">
+        <label for="job_id">Job ID:</label>
+        <input type="number" id="job_id" name="job_id">
+
+        <label for="submitter">Submitter:</label>
+        <input type="text" id="submitter" name="submitter">
+
+        <label for="suite">Submitter:</label>
+        <input type="text" id="suite" name="suite">
+
+        <input type="submit" value="Add">
+    </form>     
     <table>
         <tr>
-            <th>job_id</th>
-            <th>suite</th>
-            <th>tcnum</th>
-            <th>submitter</th>
-            <th>sw_ver</th>
-            <th>branch</th>
-            <th>started</th>
-            <th>finished</th>
-            <th>duration</th>
-            <th>pass</th>
-            <th>warning</th>
-            <th>fail</th>
-            <th>abort</th>
-            <th>testbet</th>
+            <th>Job id</th>
+            <th>Suite</th>
+            <th>TC Num</th>
+            <th>Submitter</th>
+            <th>SW Ver</th>
+            <th>Branch</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>Duration</th>
+            <th>Pass</th>
+            <th>Warning</th>
+            <th>Fail</th>
+            <th>Abort</th>
+            <th>Testbed</th>
         </tr>
         {% for item in data %}
             <tr>
@@ -85,6 +98,6 @@
                 <td>{{ item["testbed"] }}</td>
             </tr>
         {% endfor %}
-    </table>
+    </table>  
 </body>
 </html>

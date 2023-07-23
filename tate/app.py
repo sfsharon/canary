@@ -2,7 +2,7 @@
 FLask implementation for querying the Tate database. 
 Using raw ssh command because paramiko and pymysql cannot support the old ssh authentication on MySql "server cmp-dt-srv2"
 """
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 
 import logging
 logging.basicConfig(
@@ -19,7 +19,7 @@ def _run_local_shell_cmd(cmd_string) :
     """
     import subprocess
 
-    logging.info(f"Running command: {cmd_string}")
+    logging.debug(f"Running command: {cmd_string}")
     result = subprocess.run(cmd_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     rc = result.returncode
     output = result.stdout.decode()
@@ -34,6 +34,11 @@ def _mysql_output_to_map(input : str) -> List[Dict [str, str]] :
     The keys are the first line received from MySql. each line is separated by '\n',
     and each entry is separatred by '\t'. 
     Hidden assumption is that the number of key values is the same for the number of columns in each entry.
+
+    Output Example :
+    data = [{'Name': 'John', 'Age': 30},
+            {'Name': 'Jane', 'Age': 25},
+            {'Name': 'Bob', 'Age': 40}]
     """
     lines = input.split('\n')
     keys = lines[0].split('\t')
@@ -52,7 +57,6 @@ def _mysql_output_to_map(input : str) -> List[Dict [str, str]] :
         output.append(entry)
     return output
 
-
 # ***************************************************************************************
 # Main Application
 # ***************************************************************************************
@@ -63,18 +67,43 @@ app = Flask(__name__)
 
 @app.route("/", methods=["GET", "POST"])
 def index(): 
-    # Build SQL query
-    col_names  = "job_id, suite, tcnum, submitter, sw_ver, branch, started, finished, duration, pass, warning, fail, abort, testbed" 
-    conditions  = "testbed is not null limit 5"
-    query      = f"SELECT {col_names} FROM jobs WHERE {conditions};" 
+    data_parsed = []
 
-    # Build and send SSH command
-    cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
-    rc, output_mysql = _run_local_shell_cmd(cmd)
-    assert (rc == 0), f"Got rc {rc}"
+    if request.method == 'POST' :
 
-    # Parse response from MySql server
-    data_parsed = _mysql_output_to_map(output_mysql)    
+        # Build SQL condition string 
+        conditions_list = []
+        conditions = ""
+        # Get input from user
+        job_id    = request.form['job_id']
+        if len(job_id) > 0 :
+            conditions_list.append(f"job_id = {job_id}")
+        submitter = request.form['submitter']
+        if len(submitter) > 0 :
+            conditions_list.append(f"submitter = '{submitter}'")        
+        suite     = request.form['suite']
+        if len(suite) > 0 :
+            conditions_list.append(f"suite = '{suite}'")   
+
+        if len(conditions_list) > 0 :
+            for i, val in enumerate(conditions_list):
+                if   i == 0 : conditions = val
+                elif i == len(conditions_list) : conditions += val
+                else :  conditions += " AND " + val
+
+        if len(conditions) > 0 :
+            # Build SQL query
+            col_names  = "job_id, suite, tcnum, submitter, sw_ver, branch, started, finished, duration, pass, warning, fail, abort, testbed" 
+            # conditions  = "testbed is not null limit 5"
+            query      = f"SELECT {col_names} FROM jobs WHERE ({conditions});" 
+
+            # Build and send SSH command
+            cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
+            rc, output_mysql = _run_local_shell_cmd(cmd)
+            assert (rc == 0), f"Got rc {rc}"
+
+            # Parse response from MySql server
+            data_parsed = _mysql_output_to_map(output_mysql)    
 
     # Render HTML
     output = render_template("index.html", data=data_parsed)
