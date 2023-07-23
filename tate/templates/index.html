@@ -52,21 +52,37 @@
     <h1>Simple Flask App</h1>
     <table>
         <tr>
-            <th>testbed</th>
+            <th>job_id</th>
+            <th>suite</th>
+            <th>tcnum</th>
+            <th>submitter</th>
             <th>sw_ver</th>
-            <th>duration</th>
+            <th>branch</th>
             <th>started</th>
+            <th>finished</th>
+            <th>duration</th>
             <th>pass</th>
+            <th>warning</th>
             <th>fail</th>
+            <th>abort</th>
+            <th>testbet</th>
         </tr>
         {% for item in data %}
             <tr>
-                <td>{{ item["testbed"] }}</td>
+                <td>{{ item["job_id"] }}</td>
+                <td>{{ item["suite"] }}</td>
+                <td>{{ item["tcnum"] }}</td>
+                <td>{{ item["submitter"] }}</td>
                 <td>{{ item["sw_ver"] }}</td>
-                <td>{{ item["duration"] }}</td>
+                <td>{{ item["branch"] }}</td>
                 <td>{{ item["started"] }}</td>
-                <td>{{ item["pass"] }}</td>
+                <td>{{ item["finished"] }}</td>
+                <td>{{ item["duration"] }}</td>
+                <td>{{ item["pass"] }}</td>                
+                <td>{{ item["warning"] }}</td>
                 <td>{{ item["fail"] }}</td>
+                <td>{{ item["abort"] }}</td>
+                <td>{{ item["testbed"] }}</td>
             </tr>
         {% endfor %}
     </table>

@@ -43,6 +43,11 @@ def _mysql_output_to_map(input : str) -> List[Dict [str, str]] :
         entry = {}
         col_values = line.split('\t')
         for index, val in enumerate(col_values):
+            # Beautifying values 
+            if val == "NULL" : val = " "
+            if keys[index] == "suite" :
+                val = val.split('/')[-1]
+            # Saving values
             entry[keys[index]] = val
         output.append(entry)
     return output
@@ -57,12 +62,21 @@ MYSQL_MACHINE_IP = '192.168.20.53'
 app = Flask(__name__)
 
 @app.route("/", methods=["GET", "POST"])
-def index():  
-    query = "select  testbed,sw_ver,duration,started,pass,fail from jobs where testbed is not null limit 5;" 
+def index(): 
+    # Build SQL query
+    col_names  = "job_id, suite, tcnum, submitter, sw_ver, branch, started, finished, duration, pass, warning, fail, abort, testbed" 
+    conditions  = "testbed is not null limit 5"
+    query      = f"SELECT {col_names} FROM jobs WHERE {conditions};" 
+
+    # Build and send SSH command
     cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
     rc, output_mysql = _run_local_shell_cmd(cmd)
     assert (rc == 0), f"Got rc {rc}"
+
+    # Parse response from MySql server
     data_parsed = _mysql_output_to_map(output_mysql)    
+
+    # Render HTML
     output = render_template("index.html", data=data_parsed)
     return output
 
