@@ -94,14 +94,19 @@ def index():
             conditions_list.append(r"sw_ver LIKE \"" + f"%{sw_ver}%" + r"\"")
 
             # branch
-        branch     = request.form['branch']
-        if len(branch) > 0 :
-            conditions_list.append(r"branch LIKE \"" + f"%{branch}%" + r"\"")
+        # branch     = request.form['branch']
+        # if len(branch) > 0 :
+        #     conditions_list.append(r"branch LIKE \"" + f"%{branch}%" + r"\"")
 
             # testbed
         testbed     = request.form['testbed']
         if len(testbed) > 0 and testbed != "any":
             conditions_list.append(r"testbed LIKE \"" + f"%{testbed}%" + r"\"")
+
+            # age
+        age     = request.form['age']
+        if len(age) > 0 and age != "any":
+            conditions_list.append(f"started >= DATE_SUB(CURDATE(), INTERVAL {age})")
 
         # Combine conditions with AND operator
         if len(conditions_list) > 0 :

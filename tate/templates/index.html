@@ -14,9 +14,11 @@
 
         form {
             display: flex;
-            justify-content: center;
+            justify-content: left;
             align-items: center;
             margin-bottom: 20px;
+            max-width: 100%;
+            overflow-x: auto;
         }
 
         form label {
@@ -52,20 +54,28 @@
     <h1>Forty-Two</h1>
     <h2>Search:</h2>
     <form method="POST">
-        <label for="job_id">Job ID:</label>
-        <input type="number" id="job_id" name="job_id">
+        <input type="submit" value=" Search ">
 
-        <label for="submitter">Submitter:</label>
-        <input type="text" id="submitter" name="submitter">
-
+        <label for="age">Age:</label>
+        <select id="age" name="age">
+            <option value="any">any</option>            
+            <option value="1 DAY">Today</option>
+            <option value="1 WEEK">One Week ago</option>
+            <option value="2 WEEK">Two Weeks ago</option>
+            <option value="3 WEEK">Three Weeks ago</option>
+            <option value="1 MONTH">One Month ago</option>
+            <option value="2 MONTH">Two Month ago</option>
+            <option value="3 MONTH">Three Month ago</option>
+        </select>
+        
         <label for="suite">Suite:</label>
         <input type="text" id="suite" name="suite">
 
         <label for="sw_ver">SW Ver:</label>
         <input type="text" id="sw_ver" name="sw_ver">
 
-        <label for="branch">Branch:</label>
-        <input type="text" id="branch" name="branch">
+        <!-- <label for="branch">Branch:</label>
+        <input type="text" id="branch" name="branch"> -->
 
         <label for="testbed">Testbed:</label>
         <select id="testbed" name="testbed">
@@ -100,7 +110,12 @@
             <option value="Edgecore-pc3025">Edgecore-pc3058</option>
         </select>
 
-        <input type="submit" value=" Search ">
+        <label for="submitter">Submitter:</label>
+        <input type="text" id="submitter" name="submitter">
+
+        <label for="job_id">Job ID:</label>
+        <input type="number" id="job_id" name="job_id">
+
     </form>     
     <table>
         <tr>
@@ -109,7 +124,7 @@
             <th>TC Num</th>
             <th>Submitter</th>
             <th>SW Ver</th>
-            <th>Branch</th>
+            <!-- <th>Branch</th> -->
             <th>Started</th>
             <th>Finished</th>
             <th>Duration</th>
@@ -126,7 +141,7 @@
                 <td>{{ item["tcnum"] }}</td>
                 <td>{{ item["submitter"] }}</td>
                 <td>{{ item["sw_ver"] }}</td>
-                <td>{{ item["branch"] }}</td>
+                <!-- <td>{{ item["branch"] }}</td> -->
                 <td>{{ item["started"] }}</td>
                 <td>{{ item["finished"] }}</td>
                 <td>{{ item["duration"] }}</td>
@@ -135,6 +150,7 @@
                 <td>{{ item["fail"] }}</td>
                 <td>{{ item["abort"] }}</td>
                 <td>{{ item["testbed"] }}</td>
+                <td>{{ item["age"] }}</td>
             </tr>
         {% endfor %}
     </table>  
