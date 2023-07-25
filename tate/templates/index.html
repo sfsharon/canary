@@ -52,69 +52,67 @@
 </head>
 <body>
     <h1>Forty-Two</h1>
-    <h2>Search:</h2>
-    <form method="POST">
+    <form id="myForm" method="POST">
+        <!-- Search Button -->
         <input type="submit" value=" Search ">
 
+        <!-- Input Boxes -->
         <label for="age">Age:</label>
         <select id="age" name="age">
-            <option value="any">any</option>            
-            <option value="1 DAY">Today</option>
-            <option value="1 WEEK">One Week ago</option>
-            <option value="2 WEEK">Two Weeks ago</option>
-            <option value="3 WEEK">Three Weeks ago</option>
-            <option value="1 MONTH">One Month ago</option>
-            <option value="2 MONTH">Two Month ago</option>
-            <option value="3 MONTH">Three Month ago</option>
+            <option value="any" {% if last_input['age'] == 'any' %} selected {% endif %}>any</option>            
+            <option value="1 DAY"  {% if last_input['age'] == '1 DAY' %} selected {% endif %}>Today</option>
+            <option value="1 WEEK" {% if last_input['age'] == '1 WEEK' %} selected {% endif %}>One Week ago</option>
+            <option value="2 WEEK" {% if last_input['age'] == '2 WEEK' %} selected {% endif %}>Two Weeks ago</option>
+            <option value="3 WEEK" {% if last_input['age'] == '3 WEEK' %} selected {% endif %}>Three Weeks ago</option>
+            <option value="1 MONTH" {% if last_input['age'] == '1 MONTH' %} selected {% endif %}>One Month ago</option>
+            <option value="2 MONTH" {% if last_input['age'] == '2 MONTH' %} selected {% endif %}>Two Month ago</option>
+            <option value="3 MONTH" {% if last_input['age'] == '3 MONTH' %} selected {% endif %}>Three Month ago</option>
         </select>
         
         <label for="suite">Suite:</label>
-        <input type="text" id="suite" name="suite">
+        <input type="text" id="suite" name="suite" value="{{ last_input['suite'] }}">
 
         <label for="sw_ver">SW Ver:</label>
-        <input type="text" id="sw_ver" name="sw_ver">
-
-        <!-- <label for="branch">Branch:</label>
-        <input type="text" id="branch" name="branch"> -->
+        <input type="text" id="sw_ver" name="sw_ver" value="{{ last_input['sw_ver'] }}">
 
         <label for="testbed">Testbed:</label>
         <select id="testbed" name="testbed">
-            <option value="any">any</option>            
-            <option value="Edgecore-pc3001">Edgecore-pc3001</option>
-            <option value="Edgecore-pc3002">Edgecore-pc3002</option>
-            <option value="Edgecore-pc3003">Edgecore-pc3003</option>
-            <option value="Edgecore-pc3004">Edgecore-pc3004</option>
-            <option value="Edgecore-pc3005">Edgecore-pc3005</option>
-            <option value="Edgecore-pc3006">Edgecore-pc3006</option>
-            <option value="Edgecore-pc3007">Edgecore-pc3007</option>
-            <option value="Edgecore-pc3008">Edgecore-pc3008</option>
-            <option value="Edgecore-pc3013">Edgecore-pc3013</option>
-            <option value="Edgecore-pc3015">Edgecore-pc3015</option>
-            <option value="Edgecore-pc3016">Edgecore-pc3016</option>
-            <option value="Edgecore-pc3017">Edgecore-pc3017</option>
-            <option value="Edgecore-pc3019">Edgecore-pc3019</option>
-            <option value="Edgecore-pc3021">Edgecore-pc3021</option>
-            <option value="Edgecore-pc3023">Edgecore-pc3023</option>
-            <option value="Edgecore-pc3024">Edgecore-pc3024</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3025</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3026</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3027</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3028</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3029</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3034</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3035</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3036</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3047</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3048</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3055</option>
-            <option value="Edgecore-pc3025">Edgecore-pc3058</option>
+            <option value="any" {% if last_input['age'] == 'any' %} selected {% endif %}>any</option>            
+            <option value="Edgecore-pc3001" {% if last_input['age'] == 'Edgecore-pc3001' %} selected {% endif %}>Edgecore-pc3001</option>
+            <option value="Edgecore-pc3002" {% if last_input['age'] == 'Edgecore-pc3002' %} selected {% endif %}>Edgecore-pc3002</option>
+            <option value="Edgecore-pc3003" {% if last_input['age'] == 'Edgecore-pc3003' %} selected {% endif %}>Edgecore-pc3003</option>
+            <option value="Edgecore-pc3004" {% if last_input['age'] == 'Edgecore-pc3004' %} selected {% endif %}>Edgecore-pc3004</option>
+            <option value="Edgecore-pc3005" {% if last_input['age'] == 'Edgecore-pc3005' %} selected {% endif %}>Edgecore-pc3005</option>
+            <option value="Edgecore-pc3006" {% if last_input['age'] == 'Edgecore-pc3006' %} selected {% endif %}>Edgecore-pc3006</option>
+            <option value="Edgecore-pc3007" {% if last_input['age'] == 'Edgecore-pc3007' %} selected {% endif %}>Edgecore-pc3007</option>
+            <option value="Edgecore-pc3008" {% if last_input['age'] == 'Edgecore-pc3008' %} selected {% endif %}>Edgecore-pc3008</option>
+            <option value="Edgecore-pc3013" {% if last_input['age'] == 'Edgecore-pc3013' %} selected {% endif %}>Edgecore-pc3013</option>
+            <option value="Edgecore-pc3015" {% if last_input['age'] == 'Edgecore-pc3015' %} selected {% endif %}>Edgecore-pc3015</option>
+            <option value="Edgecore-pc3016" {% if last_input['age'] == 'Edgecore-pc3016' %} selected {% endif %}>Edgecore-pc3016</option>
+            <option value="Edgecore-pc3017" {% if last_input['age'] == 'Edgecore-pc3017' %} selected {% endif %}>Edgecore-pc3017</option>
+            <option value="Edgecore-pc3019" {% if last_input['age'] == 'Edgecore-pc3019' %} selected {% endif %}>Edgecore-pc3019</option>
+            <option value="Edgecore-pc3021" {% if last_input['age'] == 'Edgecore-pc3021' %} selected {% endif %}>Edgecore-pc3021</option>
+            <option value="Edgecore-pc3023" {% if last_input['age'] == 'Edgecore-pc3023' %} selected {% endif %}>Edgecore-pc3023</option>
+            <option value="Edgecore-pc3024" {% if last_input['age'] == 'Edgecore-pc3024' %} selected {% endif %}>Edgecore-pc3024</option>
+            <option value="Edgecore-pc3025" {% if last_input['age'] == 'Edgecore-pc3025' %} selected {% endif %}>Edgecore-pc3025</option>
+            <option value="Edgecore-pc3026" {% if last_input['age'] == 'Edgecore-pc3026' %} selected {% endif %}>Edgecore-pc3026</option>
+            <option value="Edgecore-pc3027" {% if last_input['age'] == 'Edgecore-pc3027' %} selected {% endif %}>Edgecore-pc3027</option>
+            <option value="Edgecore-pc3028" {% if last_input['age'] == 'Edgecore-pc3028' %} selected {% endif %}>Edgecore-pc3028</option>
+            <option value="Edgecore-pc3029" {% if last_input['age'] == 'Edgecore-pc3029' %} selected {% endif %}>Edgecore-pc3029</option>
+            <option value="Edgecore-pc3034" {% if last_input['age'] == 'Edgecore-pc3034' %} selected {% endif %}>Edgecore-pc3034</option>
+            <option value="Edgecore-pc3035" {% if last_input['age'] == 'Edgecore-pc3035' %} selected {% endif %}>Edgecore-pc3035</option>
+            <option value="Edgecore-pc3036" {% if last_input['age'] == 'Edgecore-pc3036' %} selected {% endif %}>Edgecore-pc3036</option>
+            <option value="Edgecore-pc3047" {% if last_input['age'] == 'Edgecore-pc3047' %} selected {% endif %}>Edgecore-pc3047</option>
+            <option value="Edgecore-pc3048" {% if last_input['age'] == 'Edgecore-pc3048' %} selected {% endif %}>Edgecore-pc3048</option>
+            <option value="Edgecore-pc3055" {% if last_input['age'] == 'Edgecore-pc3055' %} selected {% endif %}>Edgecore-pc3055</option>
+            <option value="Edgecore-pc3058" {% if last_input['age'] == 'Edgecore-pc3058' %} selected {% endif %}>Edgecore-pc3058</option>
         </select>
 
         <label for="submitter">Submitter:</label>
-        <input type="text" id="submitter" name="submitter">
+        <input type="text" id="submitter" name="submitter" value="{{ last_input['submitter'] }}">
 
         <label for="job_id">Job ID:</label>
-        <input type="number" id="job_id" name="job_id">
+        <input type="number" id="job_id" name="job_id" value="{{ last_input['job_id'] }}">
 
     </form>     
     <table>
@@ -124,7 +122,6 @@
             <th>TC Num</th>
             <th>Submitter</th>
             <th>SW Ver</th>
-            <!-- <th>Branch</th> -->
             <th>Started</th>
             <th>Finished</th>
             <th>Duration</th>
@@ -141,7 +138,6 @@
                 <td>{{ item["tcnum"] }}</td>
                 <td>{{ item["submitter"] }}</td>
                 <td>{{ item["sw_ver"] }}</td>
-                <!-- <td>{{ item["branch"] }}</td> -->
                 <td>{{ item["started"] }}</td>
                 <td>{{ item["finished"] }}</td>
                 <td>{{ item["duration"] }}</td>
@@ -153,6 +149,26 @@
                 <td>{{ item["age"] }}</td>
             </tr>
         {% endfor %}
-    </table>  
+    </table>
+    <script>
+        // Save input values to localStorage when the form is submitted
+        document.getElementById("myForm").addEventListener("submit", function() {
+            const inputElements = document.querySelectorAll("input[type='text'], select");
+            for (const input of inputElements) {
+                localStorage.setItem(input.id, input.value);
+            }
+        });
+
+        // Retrieve and set input values from localStorage when the page loads
+        window.addEventListener("load", function() {
+            const inputElements = document.querySelectorAll("input[type='text'], select");
+            for (const input of inputElements) {
+                const storedValue = localStorage.getItem(input.id);
+                if (storedValue !== null) {
+                    input.value = storedValue;
+                }
+            }
+        });
+    </script>      
 </body>
 </html>

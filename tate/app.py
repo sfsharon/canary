@@ -60,43 +60,49 @@ def _mysql_output_to_map(input : str) -> List[Dict [str, str]] :
 # ***************************************************************************************
 # Main Application
 # ***************************************************************************************
-DEV_MACHINE_IP   = 'localhost'  # '172.30.16.107'
-MYSQL_MACHINE_IP = '192.168.20.53'
+DEV_MACHINE_IP   = 'localhost'     # '172.30.16.107'
+MYSQL_MACHINE_IP = '192.168.20.53' # 'cmp-dt-srv2'
 
 app = Flask(__name__)
 
 @app.route("/", methods=["GET", "POST"])
 def index(): 
+
+    # Init table values
     data_parsed = []
 
-    if request.method == 'POST' :
+    # Default input box values
+    last_input = {
+        'job_id'    : 'any',
+        'submitter' : 'any',
+        'suite'     : 'any',
+        'sw_ver'    : 'any',
+        'testbed'   : 'any',
+        'age'       : 'any'
+    }
 
+    if request.method == 'POST' :
         # Build SQL condition string 
         conditions_list = []
         conditions = ""
         # Get input from user
             # job_id
         job_id    = request.form['job_id']
-        if len(job_id) > 0 :
+        if len(job_id) > 0 and job_id != "any":
             conditions_list.append(f"job_id = {job_id}")
             # submitter
         submitter = request.form['submitter']
-        if len(submitter) > 0 :
+        if len(submitter) > 0 and submitter != "any":
             conditions_list.append(r"submitter LIKE \"" + f"%{submitter}%" + r"\"")
             # suite
         suite     = request.form['suite']
-        if len(suite) > 0 :
+        if len(suite) > 0 and suite != "any":
             conditions_list.append(r"suite LIKE \"" + f"%{suite}%" + r"\"")
 
             # sw_ver
         sw_ver     = request.form['sw_ver']
-        if len(sw_ver) > 0 :
+        if len(sw_ver) > 0 and sw_ver != "any":
             conditions_list.append(r"sw_ver LIKE \"" + f"%{sw_ver}%" + r"\"")
-
-            # branch
-        # branch     = request.form['branch']
-        # if len(branch) > 0 :
-        #     conditions_list.append(r"branch LIKE \"" + f"%{branch}%" + r"\"")
 
             # testbed
         testbed     = request.form['testbed']
@@ -107,6 +113,15 @@ def index():
         age     = request.form['age']
         if len(age) > 0 and age != "any":
             conditions_list.append(f"started >= DATE_SUB(CURDATE(), INTERVAL {age})")
+
+        last_input = {
+            'job_id'    : job_id,
+            'submitter' : submitter,
+            'suite'     : suite,
+            'sw_ver'    : sw_ver,
+            'testbed'   : testbed,
+            'age'      : age
+        }
 
         # Combine conditions with AND operator
         if len(conditions_list) > 0 :
@@ -133,7 +148,7 @@ def index():
                 logging.error(f"SQL Query '{query}' return error code {rc}")
 
     # Render HTML
-    output = render_template("index.html", data=data_parsed)
+    output = render_template("index.html", data=data_parsed, last_input=last_input)
     return output
 
 if __name__ == "__main__":
