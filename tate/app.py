@@ -73,43 +73,39 @@ def index():
 
     # Default input box values
     last_input = {
+        'age'       : 'any',
         'job_id'    : 'any',
         'submitter' : 'any',
         'suite'     : 'any',
         'sw_ver'    : 'any',
         'testbed'   : 'any',
-        'age'       : 'any'
     }
 
+    conditions_list = []
+    conditions = ""
+    # Build SQL condition string 
     if request.method == 'POST' :
-        # Build SQL condition string 
-        conditions_list = []
-        conditions = ""
         # Get input from user
-            # job_id
         job_id    = request.form['job_id']
         if len(job_id) > 0 and job_id != "any":
             conditions_list.append(f"job_id = {job_id}")
-            # submitter
+
         submitter = request.form['submitter']
         if len(submitter) > 0 and submitter != "any":
             conditions_list.append(r"submitter LIKE \"" + f"%{submitter}%" + r"\"")
-            # suite
+
         suite     = request.form['suite']
         if len(suite) > 0 and suite != "any":
             conditions_list.append(r"suite LIKE \"" + f"%{suite}%" + r"\"")
 
-            # sw_ver
         sw_ver     = request.form['sw_ver']
         if len(sw_ver) > 0 and sw_ver != "any":
             conditions_list.append(r"sw_ver LIKE \"" + f"%{sw_ver}%" + r"\"")
 
-            # testbed
         testbed     = request.form['testbed']
         if len(testbed) > 0 and testbed != "any":
             conditions_list.append(r"testbed LIKE \"" + f"%{testbed}%" + r"\"")
 
-            # age
         age     = request.form['age']
         if len(age) > 0 and age != "any":
             conditions_list.append(f"started >= DATE_SUB(CURDATE(), INTERVAL {age})")
@@ -120,7 +116,7 @@ def index():
             'suite'     : suite,
             'sw_ver'    : sw_ver,
             'testbed'   : testbed,
-            'age'      : age
+            'age'       : age
         }
 
         # Combine conditions with AND operator
@@ -129,23 +125,27 @@ def index():
                 if   i == 0 : conditions = val
                 elif i == len(conditions_list) : conditions += val
                 else :  conditions += " AND " + val
+    # End "if request.method == 'POST'""
 
-        if len(conditions) > 0 :
-            # Build SQL query
-            col_names  = "job_id, suite, tcnum, submitter, sw_ver, branch, started, finished, duration, pass, warning, fail, abort, testbed" 
-            # conditions  = "testbed is not null limit 5"
-            query      = f"SELECT {col_names} FROM jobs WHERE ({conditions});" 
+    # Send query to tate DB
+    col_names  = "job_id, suite, tcnum, submitter, sw_ver, branch, started, finished, duration, pass, warning, fail, abort, testbed"  
+    query = ''
+    if len(conditions) > 0 :
+        # Build SQL query        
+        query = f"SELECT {col_names} FROM jobs WHERE ({conditions}) ORDER BY job_id DESC;" 
+    else :
+        query = f"SELECT {col_names} FROM jobs WHERE (started >= DATE_SUB(CURDATE(), INTERVAL 1 WEEK)) ORDER BY job_id DESC LIMIT 20;" 
 
-            # Build and send SSH command
-            cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
-            rc, output_mysql = _run_local_shell_cmd(cmd)
+    # Build and send SSH command
+    cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
+    rc, output_mysql = _run_local_shell_cmd(cmd)
 
-            if rc == 0 :
-                logging.info(f"SQL Query '{query}' succeeded")
-                # Parse response from MySql server
-                data_parsed = _mysql_output_to_map(output_mysql)    
-            else :
-                logging.error(f"SQL Query '{query}' return error code {rc}")
+    if rc == 0 :
+        logging.info(f"SQL Query '{query}' succeeded")
+        # Parse response from MySql server
+        data_parsed = _mysql_output_to_map(output_mysql)    
+    else :
+        logging.error(f"SQL Query '{query}' return error code {rc}")
 
     # Render HTML
     output = render_template("index.html", data=data_parsed, last_input=last_input)
