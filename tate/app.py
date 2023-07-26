@@ -134,7 +134,7 @@ def index():
         # Build SQL query        
         query = f"SELECT {col_names} FROM jobs WHERE ({conditions}) ORDER BY job_id DESC;" 
     else :
-        query = f"SELECT {col_names} FROM jobs WHERE (started >= DATE_SUB(CURDATE(), INTERVAL 1 WEEK)) ORDER BY job_id DESC LIMIT 20;" 
+        query = f"SELECT {col_names} FROM jobs WHERE (started >= DATE_SUB(CURDATE(), INTERVAL 1 WEEK)) ORDER BY job_id DESC LIMIT 100;" 
 
     # Build and send SSH command
     cmd = f"ssh -o KexAlgorithms=diffie-hellman-group14-sha1 root@{MYSQL_MACHINE_IP} 'mysql -D tate -e \"{query}\"'"
