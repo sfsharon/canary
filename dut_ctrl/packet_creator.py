@@ -60,3 +60,25 @@ def create_l3_dscp_frame(src_ip: str, dst_ip: str, dst_mac: str , tos: int) -> b
     
     frame = Ether(dst = dst_mac) / IP(src = src_ip, dst = dst_ip, tos = tos)
     return bytes(frame).hex()
+
+
+from scapy.all import *
+
+def create_dhcp_discover_packet(vlan_id):
+    """Creates a DHCP discover packet with the specified VLAN ID."""
+
+    ethernet_frame = Ether(dst="ff:ff:ff:ff:ff:ff") / Dot1Q(vlan=vlan_id) / Ether()
+    ip_packet = IP(src="0.0.0.0", dst="255.255.255.255")
+    udp_packet = UDP(sport=68, dport=67)
+    dhcp_packet = DHCP(options=[("message-type", "discover"), ("requested_option", 53)])
+
+    packet = ethernet_frame/ip_packet/udp_packet/dhcp_packet
+
+    return packet
+
+if __name__ == "__main__":
+    packet = create_dhcp_discover_packet(1)
+    print(packet.summary())
+    frame_bytes = bytes(packet).hex()
+    print(frame_bytes)
+    print(Ether(bytes.fromhex(frame_bytes)))

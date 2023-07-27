@@ -86,27 +86,27 @@ def index():
     # Build SQL condition string 
     if request.method == 'POST' :
         # Get input from user
-        job_id    = request.form['job_id']
+        job_id    = request.form['job_id'].strip()
         if len(job_id) > 0 and job_id != "any":
             conditions_list.append(f"job_id = {job_id}")
 
-        submitter = request.form['submitter']
+        submitter = request.form['submitter'].strip()
         if len(submitter) > 0 and submitter != "any":
             conditions_list.append(r"submitter LIKE \"" + f"%{submitter}%" + r"\"")
 
-        suite     = request.form['suite']
+        suite     = request.form['suite'].strip()
         if len(suite) > 0 and suite != "any":
             conditions_list.append(r"suite LIKE \"" + f"%{suite}%" + r"\"")
 
-        sw_ver     = request.form['sw_ver']
+        sw_ver     = request.form['sw_ver'].strip()
         if len(sw_ver) > 0 and sw_ver != "any":
             conditions_list.append(r"sw_ver LIKE \"" + f"%{sw_ver}%" + r"\"")
 
-        testbed     = request.form['testbed']
+        testbed     = request.form['testbed'].strip()
         if len(testbed) > 0 and testbed != "any":
             conditions_list.append(r"testbed LIKE \"" + f"%{testbed}%" + r"\"")
 
-        age     = request.form['age']
+        age     = request.form['age'].strip()
         if len(age) > 0 and age != "any":
             conditions_list.append(f"started >= DATE_SUB(CURDATE(), INTERVAL {age})")
 
