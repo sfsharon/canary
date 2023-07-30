@@ -16,7 +16,7 @@
     <org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
       <triggers>
         <hudson.triggers.TimerTrigger>
-          <spec>0 0 * * *</spec>
+          <spec>0 2 * * *</spec>
         </hudson.triggers.TimerTrigger>
       </triggers>
     </org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
@@ -24,27 +24,74 @@
   <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@3624.v43b_a_38b_62b_b_7">
     <script>pipeline {
     agent any
+    
     stages {
-        stage(&apos;pytest stage one&apos;) {
+        stage(&apos;Prepare DUT&apos;) {
             steps {
                 dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
-                    sh &apos;python3 -m pytest --maxfail=1 --log-cli-level INFO -v test_init.py&apos;
-              //  sh &apos;echo me and you&apos;
+                    //sh &apos;python3 -m pytest --maxfail=1 --log-cli-level INFO -v test_init.py&apos;
+                    //sh &apos;python3 -m pytest --log-cli-level INFO -v test_init.py  -k test_init_TC01_installing_build_and_reboot&apos;
+                   sh &apos;echo Mock Installing Build and Reboot&apos;
                 }
             }
         }
-        stage(&apos;pytest stage two&apos;) {
-            //when {
-            //    expression { currentBuild.result == &apos;SUCCESS&apos; }
-            //}
+        
+        stage(&apos;ACL Suite - TC00_Setup_Environment&apos;) {
             steps {
                 dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
-                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py&apos;
-               //     sh &apos;echo ok ok ok&apos;
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC00_Setup_Environment&apos;
                 }
             }
         }
-    }
+
+        stage(&apos;ACL Suite - TC01_rule_r1_deny_acl_in&apos;) {
+            steps {
+                dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC01_rule_r1_deny_acl_in&apos;
+                }
+            }
+        }        
+
+        stage(&apos;ACL Suite - TC02_default_rule_permit_acl_in&apos;) {
+            steps {
+                dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC02_default_rule_permit_acl_in&apos;
+                }
+            }
+        }
+
+        stage(&apos;ACL Suite - TC03_acl_rule_r1_deny_ctrl_plane_egress&apos;) {
+            steps {
+                dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC03_acl_rule_r1_deny_ctrl_plane_egress&apos;
+                }
+            }
+        }
+
+        stage(&apos;ACL Suite - TC04_acl_rule_default_permit_ctrl_plane_egress&apos;) {
+            steps {
+                dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC04_acl_rule_default_permit_ctrl_plane_egress&apos;
+                }
+            }
+        }
+        
+        stage(&apos;ACL Suite - TC05_acl_rule_default_deny_ctrl_plane_egress&apos;) {
+            steps {
+                dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC05_acl_rule_default_deny_ctrl_plane_egress&apos;
+                }
+            }
+        }
+
+        stage(&apos;ACL Suite - TC06_acl_rule_r1_deny_ctrl_plane_nni_ingress&apos;) {
+            steps {
+                dir(&apos;/home/sharonf/workspace/canary/dut_ctrl&apos;) {
+                    sh &apos;python3 -m pytest --log-cli-level INFO -v test_suite_acl.py  -k test_TC06_acl_rule_r1_deny_ctrl_plane_nni_ingress&apos;
+                }
+            }
+        }        
+    } // stages
 }</script>
     <sandbox>true</sandbox>
   </definition>
