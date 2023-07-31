@@ -398,7 +398,7 @@ def add_dev_machine_ssh_key_to_dut(device_number, device_type):
         cli_comm.expect(f'.*{expected_response}.*')
 
         # Creating ~/.ssh/authorized_keys file
-        command = 'echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDZ/GJExXwzrbbBc/IZf4SWiLTDb6KHCGq0noyybCegEJ77Je6/rKjEnqRPRPaMdyulycrprYDfDz97OO0uwCdd7Axv0g6NunLzSbMdY5kz2cGxUYZgqub/eYLj10S2ulmeQTqCPOZ3uyO+4LCR72M3qlrjnQNkYd2oSkIF13INWhvuJ7e2FQvBqr6CvkVAiP1fVbgd5vNp4mhwTXgBEJkLWxpnFq3knNNAnod4dgNozpZQ8Ln8RaLLq3esIifyyMFMv7WzApM2CD69OwhSvCDXgdKsp5+5sFmbywGGgPxhhK3twMPcVgFderhXK+Si69YZfqdZPSoeiESLX1hvM/NBHX2E3sQDNFxeLBk0YgRR7uUohZnViRQyY9N/+YsBZHvcjAxvu+OUA2qiEw+PTUKbrORBY5KAwGYCqZGmkrtOAw3PnntBNfcTyA8gtvloYMnFBYIb4UT6DcUdRcGCHbABaTRYjf1e1NIvZPgE+ijWaAFNj03lDfyXAFU6+eaGeiE= sharonf@DEV107" > ~/.ssh/authorized_keys'
+        command = 'echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDEX/adijlM2zGZpqeJ9mz5J4RYW0k3LQWISW/lN31NVfZEY8LxghsiGWnsJfFMWRUP/n1NE72mfSZOozFv/WmLtSaRLdzBlpK1cg7nMuQvE7zL9/Y9WdzgSKEs6Khx/8tFPbjr0VyEmM+aSFGuc8xSyaTYCcNcfvN/rbmVFWaS379FQRFXyFrlZZ5ynrP1gCKblLK3m1cNUq/B7NXWyuoQHDLvGHe+B5UnviUQRl8xmTUuq/VVccwGvNNcuvXYxnE8GE5zM/mKhPDChgusy5Km3W33nK2jGTleaZWAIVPk4FSJyCTI/2F/4AOGbjp4b5iBkRtesQFAQtDN6hkV9iAtLVpydx3rMUArgFcuwo06VK7BN3lOfXy7h+0E1f/q/7rRHVSD2O0jCk/36LmMbllqqbsScAHuUZfxX1fJnd7gCC2XedMU/3WUJ62O3L8LiPQP9XhBUpSUgKoBeXxIHgg4QRiqm/I+gXCsUVSVf9nN+DfKuvZcRzMSbK3ZDByUjZs= sharonf@DEV107" > ~/.ssh/authorized_keys'
         expected_response = ONL_PROMPT
         logging.info(f"{get_time()} Sending \"{command}\"")
         cli_comm.sendline(command)
@@ -591,6 +591,10 @@ if __name__ == "__main__" :
     # _test_acl_show_counter()
     # reset_dut_connections(device_number = '3010', is_reset_cpm_connection = True)
 
-    _test_official_builds_manipulation()
+    # _test_official_builds_manipulation()
+
+    DEVICE_NUMBER = "3054"
+    DEVICE_TYPE = "ec"
+    add_dev_machine_ssh_key_to_dut(DEVICE_NUMBER, DEVICE_TYPE)
 
     logging.info(f"{get_time()} Finished")
