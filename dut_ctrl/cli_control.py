@@ -62,8 +62,7 @@ def get_official_install_file_name(cli_response, build_number) :
     normalised_input = [line.lstrip() for line in cli_response.splitlines()]
     for i, line in enumerate(normalised_input) :
         build_name = (line.split())[-1]
-        if build_name.startswith('onie-installer-') and \
-           build_name.endswith(f"b{build_number}") :
+        if build_name.endswith(f"b{build_number}") :
             required_file_name = build_name            
             break
 
@@ -75,7 +74,7 @@ def get_official_latest_build(cli_response: str) -> str :
     Return value : String, Latest build_number
     """
     import re
-    install_file_name_pattern   = r"^onie-installer-.*b\d+$"
+    install_file_name_pattern   = r"onie-installer-.*b\d+$"
     get_build_num_pattern       = r"\d+$"
     max_build_num = 0
 

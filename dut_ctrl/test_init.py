@@ -39,9 +39,12 @@ def _link_build_to_onie_installer(device_num, device_type, build_num) :
     """
     import os
     from cli_control import get_time, get_official_install_file_name, get_official_latest_build
-    
+    import configparser
+
     # 1. Get name of build build_num
-    build_path = '/auto/exaware/build-slave/images/develop'
+    constants = configparser.ConfigParser()
+    constants.read('config.ini')
+    build_path = constants['GENERAL']['BRANCH'] 
     output = _get_list_of_files(build_path)
     
     if build_num == None:
@@ -345,7 +348,7 @@ def test_init_TC06_verify_cpm_ready() :
         test_build_number = constants['GENERAL']['TEST_BUILD_NUMBER']
         logging.info (f"{get_time()} Using user defined build number: {test_build_number}")
     else:
-        build_path = '/auto/exaware/build-slave/images/develop'
+        build_path = constants['GENERAL']['BRANCH'] 
         output = _get_list_of_files(build_path)
         test_build_number = get_official_latest_build(output)
         logging.info (f"{get_time()} Using latest build number: {test_build_number}")
