@@ -1,6 +1,6 @@
 {% extends "bootstrap/base.html" %}
 
-{% block title %}MyFlasky{% endblock %}
+{% block title %}MyFlasky3{% endblock %}
 
 {% block navbar %}
 <div class="navbar navbar-inverse" role="navigation">
@@ -25,8 +25,6 @@
 
 {% block content %}
 <div class="container">
-    <div class=""page-header">
-        <h1>Hello, {{ name }}!</h1>
-    </div>
+	{% block page_content %}{% endblock%}
 </div>
 {% endblock %}
