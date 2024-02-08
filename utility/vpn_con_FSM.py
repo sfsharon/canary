@@ -12,68 +12,59 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
-# Application Constants
-CMD = 'sudo /usr/bin/openfortivpn -c /home/sharonf/my.cfg'
-EXPECT_TIMEOUT = 2
-
 # Action functions for the FSM
 # ====================================================
-def Error (fsm):
-    logging.error('Error FSM : That does not compute.')
+def ErrorTransition (fsm):
+    logging.error('\nErrorTransition FSM : That does not compute.')
     logging.error(str(fsm.input_symbol))
 
+def ErrorNoInput (fsm):
+    print ("\n")
+    logging.error('ErrorNoInput : No Recognizable Input.')
+    sys.exit(1)
+
+def EnterPassword (fsm):
+    # print ("\n")
+    logging.error('EnterPassword : Sending password.')
+    fsm.memory['pexpect_child'].sendline('123456')
+    # sys.exit(2)
 
 # Build the FSM
 # ====================================================
-TWO_FACTOR_REQUEST_SYMBOL = r"Two-factor authentication token:"
-PASSWORD_REQUEST_SYMBOL   = r"[sudo] password for sharonf: "
-EXPECTED_SYMBOLS = [TWO_FACTOR_REQUEST_SYMBOL, 
-                    PASSWORD_REQUEST_SYMBOL,
+TWO_FACTOR_REQUEST_SYMBOL = "Two-factor authentication token:"
+# PASSWORD_REQUEST_SYMBOL   = r"[sudo] password for sharonf:"
+PASSWORD_REQUEST_SYMBOL   = "\[sudo\] password for sharonf:"
+EXPECTED_SYMBOLS = [PASSWORD_REQUEST_SYMBOL,
+                    TWO_FACTOR_REQUEST_SYMBOL, 
                     # last two elements are always EOF and TIMEOUT
                     pexpect.EOF, 
                     pexpect.TIMEOUT]
 
+# Application Constants
+# ====================================================
+CMD = 'sudo /usr/bin/openfortivpn -c /home/sharonf/my.cfg'
+EXPECT_TIMEOUT = 3
+
 def main() :
 
-    logging.info("Beginning The VPN Connection !!!\n" + "=" * 20)
+    logging.info("Beginning The VPN Connection !!!\n" + " " * 47  + "-" * 40)
 
-
-    f = FSM (initial_state = 'INIT', memory = None)
-
-    # Build FSM Nodes and Edges
-    f.set_default_transition (Error, 'INIT')
-    f.add_transition_any  ('INIT', GetInitialInput, 'INIT')
-
-    logging.info(f'Get Input from pexpect')
     # Setup the pexpect object
+    logging.info(f'Get Input from pexpect')
     pexpect_child = pexpect.spawn(CMD)
     pexpect_child.logfile = sys.stdout.buffer
-    i = pexpect_child.expect (EXPECTED_SYMBOLS, timeout = EXPECT_TIMEOUT)
+    fsm_memory = {'pexpect_child' : pexpect_child}
 
-    # if i == 0:
-    #     print("Two factor")
-    # elif i == 1 :
-    #     pexpect_child.sendline("123456")    
-    #     print ("Sent password")
-    #     i = pexpect_child.expect(["Two-factor authentication token: ", 
-    #                     pexpect.EOF, 
-    #                     pexpect.TIMEOUT], timeout = EXPECT_TIMEOUT)
-    #     if i == 0 :
-    #         print ("Need to send ctrl-c")
-    #     elif i == 1:
-    #         print ("EOF")
-    #     elif i ==2 :
-    #         print ("Timeout 2")
-    # elif i == 2:
-    #     print ("EOF")
-    # elif i == 3:
-    #     print ("TIMEOUT 1")
-    # else:
-    #     print ("Unrecognized")
+    # Setup the FSM 
+    f = FSM (initial_state = 'INIT', memory = fsm_memory)
+    f.set_default_transition (ErrorTransition, 'INIT')
+    f.add_transition_any     ('INIT', ErrorNoInput, 'INIT')
+    f.add_transition         (PASSWORD_REQUEST_SYMBOL, 'INIT', EnterPassword,          'INIT')
 
-    # Endless loop to process pexpect output
+    # Main Loop - Endless looping to process pexpect output
     while True :
-        f.process(EXPECTED_SYMBOLS[i])
+        i = pexpect_child.expect (EXPECTED_SYMBOLS, timeout = EXPECT_TIMEOUT)
+        f.process(EXPECTED_SYMBOLS[i])        
 
 if __name__ == "__main__" :
     main()
