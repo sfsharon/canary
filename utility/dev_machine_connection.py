@@ -17,21 +17,23 @@ DEV_MACHINE_PROMPT_SYMBOL = "sharonf@DEV107"
 CMD = 'ssh sharonf@172.30.16.107'
 
 def main() :
-
-    screen_session = sys.argv[1]
-    logging.info(f"** Connecting to DEV machine screen {screen_session} **")
-
     # Configure pexpect object
     pexpect_child = pexpect.spawn(CMD)
+    logging.info(f"** Expect prompt **")
+    pexpect_child.expect (DEV_MACHINE_PROMPT_SYMBOL)
 
-    logging.info(f"** Expect prompt **")
-    pexpect_child.expect (DEV_MACHINE_PROMPT_SYMBOL)
-    logging.info(f"** Send -d **")
-    pexpect_child.sendline(f"screen -d {screen_session}")    
-    logging.info(f"** Expect prompt **")
-    pexpect_child.expect (DEV_MACHINE_PROMPT_SYMBOL)
-    logging.info(f"** Send -r **")
-    pexpect_child.sendline(f"screen -r {screen_session}")    
+    remote_conn = sys.argv[1]
+    if remote_conn == "onl" :
+        logging.info(f"** Connecting to DEV machine onl **")
+    else :
+        logging.info(f"** Connecting to DEV machine screen {remote_conn} **")
+        logging.info(f"** Send -d **")
+        pexpect_child.sendline(f"screen -d {remote_conn}")    
+        logging.info(f"** Expect prompt **")
+        pexpect_child.expect (DEV_MACHINE_PROMPT_SYMBOL)
+        logging.info(f"** Send -r **")
+        pexpect_child.sendline(f"screen -r {remote_conn}")    
+
     logging.info("** Escape character is '^]' **\n")
     time.sleep(2)
     pexpect_child.interact()
