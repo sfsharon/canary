@@ -14,29 +14,30 @@ logging.basicConfig(
 
 # Action functions for the FSM
 # ====================================================
-def ErrorFSM (fsm):
+def ErrorFSM (fsm: FSM):
     logging.error(f"** ErrorFSM ** ({fsm.current_state}). Input Symbol : {fsm.input_symbol}, Connection Established : {fsm.memory['connection_established']}")
     sys.exit(1)
 
-def EnterPassword (fsm):
-    logging.info(f'** EnterPassword ** ({fsm.current_state})')
+def EnterPassword (fsm: FSM):
+    logging.info(f'** EnterPassword ** ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['response_to_pexpect'] = '123456'
 
-def ConnEstablished (fsm) :
-    logging.info(f'** ConnEstablished ** ({fsm.current_state})')
+def ConnEstablished (fsm: FSM) :
+    logging.info(f'** ConnEstablished ** ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['connection_established'] = True
 
-def InitRestartPexpect(fsm) :
-    logging.info(f'** InitRestartPexpect ** ({fsm.current_state})')
+def InitRestartPexpect(fsm: FSM) :
+    logging.info(f'** InitRestartPexpect ** ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['reset_connection']    = True
 
-def RuntimeRestartPexpect(fsm) :
-    logging.info(f'** RuntimeRestartPexpect ** ({fsm.current_state})')
+def RuntimeRestartPexpect(fsm: FSM) :
+    logging.info(f'** RuntimeRestartPexpect ** ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['reset_connection']    = True
     # Tell user VPN connection went down
     popup()  
     
-def TimeoutRestartPexpect (fsm) :
+def TimeoutRestartPexpect (fsm: FSM) :
+    logging.info(f'** TimeoutRestartPexpect ** ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['nof_timeouts'] += 1
     logging.info(f"** TimeoutRestartPexpect ** - Number of Timeouts {fsm.memory['nof_timeouts']} ({fsm.current_state})")
     if fsm.memory['nof_timeouts'] % 5 == 0 :

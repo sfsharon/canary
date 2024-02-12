@@ -34,8 +34,21 @@ def main() :
         logging.info(f"** Send -r **")
         pexpect_child.sendline(f"screen -r {remote_conn}")    
 
-    logging.info("** Escape character is '^]' **\n")
+    logging.info("** Escape character is '^]'**\n")
+    
+    def get_terminal_size():
+        import struct, fcntl, termios
+        s = struct.pack("HHHH", 0, 0, 0, 0)
+        a = struct.unpack('hhhh', fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, s))
+        return a[0], a[1]
+
+    terminal_size = get_terminal_size()
+    logging.info(f"** Setting terminal size to {terminal_size} **\n")
+    pexpect_child.setwinsize(*terminal_size)
+
+    # Before handing back control to the user, few seconds to read logs
     time.sleep(2)
+
     pexpect_child.interact()
     logging.info("** Left interactive mode **")
 
