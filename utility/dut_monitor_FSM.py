@@ -13,16 +13,21 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
-DEV_MACHINE_PROMPT_SYMBOL       = "sharonf@DEV107"
 DUT = "3048"
-SERIAL_DISCONNECTED_CMD = f'exa-il01-ec-{DUT}-sc'
+
+DEV_MACHINE_PROMPT_SYMBOL   = "sharonf@DEV107"
+ONL_PROMPT_SYMBOL           = "root@localhost:~#"
+
+SERIAL_DISCONNECT_CMD = f'exa-il01-ec-{DUT}-sc'
 SERIAL_CONN_CMD         = f'exa-il01-ec-{DUT}-s'
-# CMD = 'ssh sharonf@172.30.16.107'
+DEV_MACHINE_CONN_CMD    = 'ssh sharonf@172.30.16.107'
 
 def main() :
-    # Configure pexpect object
-    pexpect_child = pexpect.spawn(SERIAL_DISCONNECTED_CMD)
-    logging.info(f"** Expect prompt **")
+    pexpect_child = pexpect.spawn(DEV_MACHINE_CONN_CMD)
+    logging.info(f"** Expect DEV Machine prompt **")
+    pexpect_child.expect (DEV_MACHINE_PROMPT_SYMBOL)
+    pexpect_child.sendline(SERIAL_DISCONNECT_CMD)
+    logging.info(f"** Expect DEV Machine prompt **")
     pexpect_child.expect (DEV_MACHINE_PROMPT_SYMBOL)
 
     # remote_conn = sys.argv[1]
