@@ -1,18 +1,21 @@
 '''
 Keep VPN connection open using FSM
 '''
+
+import sys
+import os
 from fsm import FSM
 import pexpect
-import sys
 import time
 import signal
-# Logging
+import socket
 import logging
 
+# Logging Configuration
 logging.basicConfig(
-                    format='\n%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s', 
-                    level=logging.INFO,
-                    datefmt='%H:%M:%S')
+    format='\n%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',
+    level=logging.INFO,
+    datefmt='%H:%M:%S')
 
 # Constants
 # ==================================================
@@ -21,33 +24,23 @@ CMD = 'sudo /usr/bin/openfortivpn -c /home/sharonf/my.cfg'
 EXPECT_TIMEOUT = 2
 PING_TIMEOUT   = 1
 
-
-# Setup GUI
+# Setting up GUI
 # ==================================================
 import multiprocessing
 from vpn_gui import StartGui
-
-# Define arguments
-GUI_SERVER_HOST = "localhost"
-GUI_SERVER_PORT = 1984
+# Unix domain socket path
+SOCKET_PATH = "/tmp/my_unix_socket"
 
 # Create a multiprocessing.Process object for the function
-gui_process = multiprocessing.Process(target=StartGui, args=(GUI_SERVER_HOST, GUI_SERVER_PORT))
+try:
+    os.remove(SOCKET_PATH)
+except FileNotFoundError:
+    pass
+gui_process = multiprocessing.Process(target=StartGui, args=(SOCKET_PATH,))
 logging.info("** Starting GUI server **")
 gui_process.start()
 logging.info("** Started GUI server **")
-# while (1) :
-#     continue
 time.sleep(2)
-
-def SendGuiStatus (status: str) :
-    import socket
-    global GUI_SERVER_HOST, GUI_SERVER_PORT
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        logging.info(f"** SendGuiStatus ** - \"{status}\"")
-        s.connect((GUI_SERVER_HOST, GUI_SERVER_PORT))
-        s.sendall(status.encode('utf-8'))
 
 # Signal handler for SIGINT (ctrl-c) so that the GUI gui_process be closed once the main gui_process dies
 def SIGINT_function(sig, frame):
@@ -98,10 +91,10 @@ def PingDevMachine (fsm: FSM) :
     response = subprocess.getstatusoutput(ping_command)
     if response[0] == 0:
         fsm.memory['is_ping_successful'] = True
-        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is up!")
+        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is up !")
     else:
         fsm.memory['is_ping_successful'] = False
-        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is down!")
+        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is down")
 
 # FSM Constants
 # ====================================================
@@ -118,13 +111,11 @@ EXPECTED_SYMBOLS = [PASSWORD_REQUEST_SYMBOL,
                     # last two elements are always EOF and TIMEOUT
                     pexpect.EOF, 
                     pexpect.TIMEOUT]
-
-def main() :
-
+def main():
     logging.info("** Beginning The VPN Connection **")
 
-    # Build the FSM 
-    fsm = FSM (initial_state = 'CONNECTING')
+    # Build the FSM
+    fsm = FSM(initial_state='CONNECTING')
 
     # Default FSM memory values
     fsm.memory = {  'is_reset_conn_required'  : False,    # Used to close pexpect session and open a new one
@@ -157,58 +148,58 @@ def main() :
                                 action=RuntimeRestartPexpect,                                                next_state='CONNECTING')
     
     fsm.set_default_transition (action=ErrorFSM, next_state='EXIT')
-
     # Configure pexpect object
-    pexpect.DEBUG = True
     pexpect_child = pexpect.spawn(CMD)
     pexpect_child.logfile = sys.stdout.buffer
 
+    # Connect to the Unix domain socket
+    gui_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    gui_socket.connect(SOCKET_PATH)
+
     # Main Loop - Processing pexpect output
-    while True :
-        # Create pexpect if FSM decided to reset the connection 
-        if fsm.memory['is_reset_conn_required'] == True :
+    while True:
+        # Create pexpect if FSM decided to reset the connection
+        if fsm.memory['is_reset_conn_required']:
             fsm.memory['nof_reset_connection'] += 1
-            fsm.memory['is_reset_conn_required']      = False
+            fsm.memory['is_reset_conn_required'] = False
             logging.info(f"** Main Loop ** : Restarting pexpect. NOF attempts : {fsm.memory['nof_reset_connection']}")
             logging.info(f"** Main Loop ** : Closing pexpect_child which has status : {pexpect_child}\"")
-            try :
+            try:
                 pexpect_child.close(force=True)
-            except Exception as e :
+            except Exception as e:
                 logging.info(f"** Main Loop ** : Got exception \"{str(e)}\npexpect_child status : {pexpect_child}\"")
                 if pexpect_child.isalive():
                     logging.info(f"** Main Loop ** : Using terminate() on pexpect_child\"")
-                    pexpect_child.terminate(force = True)                    
-                    if pexpect_child.isalive(): 
+                    pexpect_child.terminate(force=True)
+                    if pexpect_child.isalive():
                         logging.info(f"** Main Loop ** : Can't kill pexpect_child\"")
                         sys.exit(1)
 
-            # Create a new pexpect chile 
+            # Create a new pexpect child
             pexpect_child = pexpect.spawn(CMD)
             pexpect_child.logfile = sys.stdout.buffer
             logging.info(f"** Main Loop ** : Restarting pexpect. NOF attempts : {fsm.memory['nof_reset_connection']}")
 
-
         # Send response if needed
         response = fsm.memory['response_to_pexpect']
-        if response != None :
+        if response is not None:
             pexpect_child.sendline(response)
             fsm.memory['response_to_pexpect'] = None
 
-        # Update timeout. Several seconds during init, infinite if connection established
-        pexpect_timeout = EXPECT_TIMEOUT
-        # if fsm.memory['is_vpn_tunnel_up'] == True :
-        #     pexpect_timeout = None
-
         # Wait for input
-        i = pexpect_child.expect (EXPECTED_SYMBOLS, timeout = pexpect_timeout)
+        i = pexpect_child.expect(EXPECTED_SYMBOLS, timeout=EXPECT_TIMEOUT)
 
         # FSM processing with received input and current state
-        fsm.process(EXPECTED_SYMBOLS[i]) 
+        fsm.process(EXPECTED_SYMBOLS[i])
 
-        ping_str = ' - no ping'
-        if fsm.memory['is_ping_successful'] == True : 
-            ping_str = ' - pinging'
-        SendGuiStatus(fsm.current_state + ping_str)     
+        ping_str = ' - No Ping'
+        if fsm.memory['is_ping_successful']:
+            ping_str = ' - Successful Pinging'
 
-if __name__ == "__main__" :
+        # Sending status to the PyQt5 server via Unix domain socket
+        status_message = fsm.current_state + ping_str
+        gui_socket.sendall(status_message.encode('utf-8'))
+
+
+if __name__ == "__main__":
     main()

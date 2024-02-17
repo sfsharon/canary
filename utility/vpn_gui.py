@@ -1,71 +1,89 @@
 """
 VPN GUI - Displaying the VPN connection status
 """
-
 import sys
+import os
 from PyQt5.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout
-import socket
-import threading
+from PyQt5.QtNetwork import QLocalServer
+from PyQt5.QtCore import QIODevice, pyqtSignal
 
 # Logging
 import logging
-logging.basicConfig(format='\n%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s', 
+logging.basicConfig(format='%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
+
 class MyDialog(QDialog):
-    def __init__(self, host : str, port : int):
+    closed = pyqtSignal()
+
+    def __init__(self, socket_path: str):
         super().__init__()
-        
-        self.host = host
-        self.port = port
-        
+
+        self.socket_path = socket_path
+
         self.setWindowTitle("VPN Status")
         self.label = QLabel()
         layout = QVBoxLayout()
         layout.addWidget(self.label)
         self.setLayout(layout)
-        self.start_server()
 
-    def start_server(self):
-        server_thread = threading.Thread(target=self.server_thread)
-        server_thread.daemon = True
-        server_thread.start()
+        # Create and start the local server
+        self.local_server = QLocalServer(self)
+        self.local_server.newConnection.connect(self.handle_new_connection)
+        self.local_server.listen(self.socket_path)
 
-    def server_thread(self):      
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(1)
-        logging.info(f"** MyDialog.start_server - Server listening on {self.host}:{self.port}")
+    def handle_new_connection(self):
+        client_connection = self.local_server.nextPendingConnection()
+        client_connection.readyRead.connect(lambda: self.handle_client_data(client_connection))
 
-        while True:
-            conn, addr = self.server_socket.accept()
-            with conn:
-                logging.info(f"** MyDialog.start_server - Connected by {addr}")
-                data = conn.recv(1024)
-                text = data.decode()
-                logging.info(f"** MyDialog.start_server - Received data: \"{text}\"")
-                self.update_label(text)
+    def handle_client_data(self, client_connection):
+        data = client_connection.readAll().data().decode()
+        logging.info(f"Received data from client: {data}")
+        self.update_label(data)
 
     def update_label(self, text):
         self.label.setText(text)
-        # self.label.adjustSize()
-        # Ensure content size is calculated accurately
-        self.label.ensurePolished()  # Add this line
-        height_for_text = self.label.sizeHint().height()
-        width_for_text = self.label.sizeHint().width()
+        self.label.setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #333; }")
+        self.label.adjustSize()
 
-        # Set minimum window size to accommodate text
-        self.setMinimumWidth(max(width_for_text + 20, 300))
-        self.setMinimumHeight(max(height_for_text + 20, 100))
+        # Adjust minimum size of dialog based on label size
+        self.setMinimumWidth(max(self.label.sizeHint().width() + 20, 300))
+        self.setMinimumHeight(max(self.label.sizeHint().height() + 20, 100))
 
-def StartGui(host : str, port : int):
-    logging.info("*** Start GUI ***")
+    def closeEvent(self, event):
+        self.closed.emit()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Move dialog to top-left corner of screen
+        self.move(0, 0)
+
+
+def StartGui(socket_path: str):
+    logging.info("--- Start GUI ---")
     app = QApplication(sys.argv)
-    dialog = MyDialog(host, port)
+    dialog = MyDialog(socket_path)
     dialog.show()
+
+    dialog.update_label("Initializing")
+
     sys.exit(app.exec_())
-    
+
 
 if __name__ == "__main__":
-    StartGui("localhost", 12345)
+    socket_path = "/tmp/my_unix_socket"
+    # Remove existing socket file if it exists
+    try:
+        os.remove(socket_path)
+    except FileNotFoundError:
+        pass
+
+    gui_closed = False
+
+    def handle_gui_closed():
+        global gui_closed
+        gui_closed = True
+
+    gui_closed_signal = StartGui(socket_path)
+    gui_closed_signal.connect(handle_gui_closed)
