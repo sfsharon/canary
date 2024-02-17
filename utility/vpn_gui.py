@@ -49,7 +49,15 @@ class MyDialog(QDialog):
 
     def update_label(self, text):
         self.label.setText(text)
-        self.label.adjustSize()
+        # self.label.adjustSize()
+        # Ensure content size is calculated accurately
+        self.label.ensurePolished()  # Add this line
+        height_for_text = self.label.sizeHint().height()
+        width_for_text = self.label.sizeHint().width()
+
+        # Set minimum window size to accommodate text
+        self.setMinimumWidth(max(width_for_text + 20, 300))
+        self.setMinimumHeight(max(height_for_text + 20, 100))
 
 def StartGui(host : str, port : int):
     logging.info("*** Start GUI ***")

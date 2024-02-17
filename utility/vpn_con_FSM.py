@@ -5,13 +5,22 @@ from fsm import FSM
 import pexpect
 import sys
 import time
-
+import signal
 # Logging
 import logging
+
 logging.basicConfig(
                     format='\n%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s', 
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
+
+# Constants
+# ==================================================
+DEV_MACHINE_IP = "172.30.16.107"
+CMD = 'sudo /usr/bin/openfortivpn -c /home/sharonf/my.cfg'
+EXPECT_TIMEOUT = 2
+PING_TIMEOUT   = 1
+
 
 # Setup GUI
 # ==================================================
@@ -23,9 +32,9 @@ GUI_SERVER_HOST = "localhost"
 GUI_SERVER_PORT = 1984
 
 # Create a multiprocessing.Process object for the function
-process = multiprocessing.Process(target=StartGui, args=(GUI_SERVER_HOST, GUI_SERVER_PORT))
+gui_process = multiprocessing.Process(target=StartGui, args=(GUI_SERVER_HOST, GUI_SERVER_PORT))
 logging.info("** Starting GUI server **")
-process.start()
+gui_process.start()
 logging.info("** Started GUI server **")
 # while (1) :
 #     continue
@@ -40,10 +49,23 @@ def SendGuiStatus (status: str) :
         s.connect((GUI_SERVER_HOST, GUI_SERVER_PORT))
         s.sendall(status.encode('utf-8'))
 
+# Signal handler for SIGINT (ctrl-c) so that the GUI gui_process be closed once the main gui_process dies
+def SIGINT_function(sig, frame):
+    global gui_process
+    logging.info(f"** SIGINT_function ** Terminating the GUI gui_process")
+    gui_process.terminate()
+    logging.info(f"** SIGINT_function ** Waiting for the GUI gui_process to exit")
+    gui_process.join()
+    logging.info(f"** SIGINT_function ** Exiting program")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, SIGINT_function)
+
+
 # Action functions for the FSM
 # ====================================================
 def ErrorFSM (fsm: FSM):
-    logging.error(f"** ErrorFSM ** ({fsm.current_state}). Input Symbol : \"{fsm.input_symbol}\", Connection Established : {fsm.memory['connection_established']}")
+    logging.error(f"** ErrorFSM ** ({fsm.current_state}). Input Symbol : \"{fsm.input_symbol}\", Connection Established : {fsm.memory['is_vpn_tunnel_up']}")
     sys.exit(1)
 
 def EnterPassword (fsm: FSM):
@@ -52,22 +74,34 @@ def EnterPassword (fsm: FSM):
 
 def ConnEstablished (fsm: FSM) :
     logging.info(f'** ConnEstablished ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
-    fsm.memory['connection_established'] = True
+    fsm.memory['is_vpn_tunnel_up'] = True
 
 def InitRestartPexpect(fsm: FSM) :
     logging.info(f'** InitRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
-    fsm.memory['reset_connection'] = True
+    fsm.memory['is_reset_conn_required'] = True
 
 def RuntimeRestartPexpect(fsm: FSM) :
     logging.info(f'** RuntimeRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
-    fsm.memory['reset_connection'] = True
+    fsm.memory['is_reset_conn_required'] = True
     
 def TimeoutRestartPexpect (fsm: FSM) :
     logging.info(f'** TimeoutRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['nof_timeouts'] += 1
     logging.info(f"** TimeoutRestartPexpect ** - Number of Timeouts {fsm.memory['nof_timeouts']} ({fsm.current_state})")
     if fsm.memory['nof_timeouts'] % 5 == 0 :
-        fsm.memory['reset_connection'] = True
+        fsm.memory['is_reset_conn_required'] = True
+
+def PingDevMachine (fsm: FSM) :
+    logging.info(f'** PingDevMachine **')
+    import subprocess
+    ping_command = f"ping -c 1 -w {PING_TIMEOUT} {DEV_MACHINE_IP}"  # Send one ping with a PING_TIMEOUT-second timeout
+    response = subprocess.getstatusoutput(ping_command)
+    if response[0] == 0:
+        fsm.memory['is_ping_successful'] = True
+        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is up!")
+    else:
+        fsm.memory['is_ping_successful'] = False
+        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is down!")
 
 # FSM Constants
 # ====================================================
@@ -84,8 +118,6 @@ EXPECTED_SYMBOLS = [PASSWORD_REQUEST_SYMBOL,
                     # last two elements are always EOF and TIMEOUT
                     pexpect.EOF, 
                     pexpect.TIMEOUT]
-CMD = 'sudo /usr/bin/openfortivpn -c /home/sharonf/my.cfg'
-EXPECT_TIMEOUT = 10
 
 def main() :
 
@@ -95,11 +127,12 @@ def main() :
     fsm = FSM (initial_state = 'CONNECTING')
 
     # Default FSM memory values
-    fsm.memory = {  'reset_connection'        : False,    # Used to close pexpect session and open a new one
+    fsm.memory = {  'is_reset_conn_required'  : False,    # Used to close pexpect session and open a new one
                     'nof_reset_connection'    : 0,        # If Two-factor request is received, the vpn connection is reset and opened again
-                    'connection_established'  : False,    # Used to change pexpect timeout if connection established to block indefinitely
+                    'is_vpn_tunnel_up'        : False,    # Used to change pexpect timeout if connection established to block indefinitely
                     'response_to_pexpect'     : None,     # Used to send string response back to pexpect
-                    'nof_timeouts'            : 0}
+                    'nof_timeouts'            : 0,
+                    'is_ping_successful'      : False}    # Is pinging the DEV machine successful 
 
     # fsm.add_transition_any     (state= 'SETUP', action = CreatePexpectProc, next_state = 'CONNECTING')
     fsm.add_transition         (input_symbol=PASSWORD_REQUEST_SYMBOL,       state='CONNECTING', 
@@ -113,6 +146,9 @@ def main() :
     
     fsm.add_transition         (input_symbol=SUCCESSFUL_CONNECTION_SYMBOL,  state='CONNECTING', 
                                 action=ConnEstablished,                next_state='CONN_ESTABLISHED')
+
+    fsm.add_transition          (input_symbol=pexpect.TIMEOUT,              state='CONN_ESTABLISHED', 
+                                action=PingDevMachine,                 next_state='CONN_ESTABLISHED')
 
     fsm.add_transition_list     (list_input_symbols=[MODEM_HANGUP_ERROR_SYMBOL, CLOSED_CONNECTION_ERROR_SYMBOL] ,  state='CONNECTING', 
                                 action=InitRestartPexpect,                                                    next_state='CONNECTING')
@@ -130,9 +166,9 @@ def main() :
     # Main Loop - Processing pexpect output
     while True :
         # Create pexpect if FSM decided to reset the connection 
-        if fsm.memory['reset_connection'] == True :
+        if fsm.memory['is_reset_conn_required'] == True :
             fsm.memory['nof_reset_connection'] += 1
-            fsm.memory['reset_connection']      = False
+            fsm.memory['is_reset_conn_required']      = False
             logging.info(f"** Main Loop ** : Restarting pexpect. NOF attempts : {fsm.memory['nof_reset_connection']}")
             logging.info(f"** Main Loop ** : Closing pexpect_child which has status : {pexpect_child}\"")
             try :
@@ -160,15 +196,19 @@ def main() :
 
         # Update timeout. Several seconds during init, infinite if connection established
         pexpect_timeout = EXPECT_TIMEOUT
-        if fsm.memory['connection_established'] == True :
-            pexpect_timeout = None
+        # if fsm.memory['is_vpn_tunnel_up'] == True :
+        #     pexpect_timeout = None
 
         # Wait for input
         i = pexpect_child.expect (EXPECTED_SYMBOLS, timeout = pexpect_timeout)
 
         # FSM processing with received input and current state
         fsm.process(EXPECTED_SYMBOLS[i]) 
-        SendGuiStatus(fsm.current_state)     
+
+        ping_str = ' - no ping'
+        if fsm.memory['is_ping_successful'] == True : 
+            ping_str = ' - pinging'
+        SendGuiStatus(fsm.current_state + ping_str)     
 
 if __name__ == "__main__" :
     main()
