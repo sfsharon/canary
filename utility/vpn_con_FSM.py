@@ -85,16 +85,16 @@ def TimeoutRestartPexpect (fsm: FSM) :
         fsm.memory['is_reset_conn_required'] = True
 
 def PingDevMachine (fsm: FSM) :
-    logging.info(f'** PingDevMachine **')
+    logging.debug(f'** PingDevMachine **')
     import subprocess
     ping_command = f"ping -c 1 -w {PING_TIMEOUT} {DEV_MACHINE_IP}"  # Send one ping with a PING_TIMEOUT-second timeout
     response = subprocess.getstatusoutput(ping_command)
     if response[0] == 0:
         fsm.memory['is_ping_successful'] = True
-        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is up !")
+        logging.debug(f"** PingDevMachine ** - {DEV_MACHINE_IP} is up !")
     else:
         fsm.memory['is_ping_successful'] = False
-        logging.info(f"** PingDevMachine ** - {DEV_MACHINE_IP} is down")
+        logging.debug(f"** PingDevMachine ** - {DEV_MACHINE_IP} is down")
 
 # FSM Constants
 # ====================================================
@@ -163,11 +163,12 @@ def main():
             fsm.memory['nof_reset_connection'] += 1
             fsm.memory['is_reset_conn_required'] = False
             logging.info(f"** Main Loop ** : Restarting pexpect. NOF attempts : {fsm.memory['nof_reset_connection']}")
-            logging.info(f"** Main Loop ** : Closing pexpect_child which has status : {pexpect_child}\"")
+            logging.info(f"** Main Loop ** : Closing pexpect_child which has status : \n===============\n{pexpect_child}\n===============\n")
             try:
                 pexpect_child.close(force=True)
+                time.sleep(2)
             except Exception as e:
-                logging.info(f"** Main Loop ** : Got exception \"{str(e)}\npexpect_child status : {pexpect_child}\"")
+                logging.info(f"** Main Loop ** : Got exception {str(e)}\npexpect_child status : \n===============\n{pexpect_child}\n===============\n")
                 if pexpect_child.isalive():
                     logging.info(f"** Main Loop ** : Using terminate() on pexpect_child\"")
                     pexpect_child.terminate(force=True)

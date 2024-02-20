@@ -39,7 +39,7 @@ class MyDialog(QDialog):
 
     def handle_client_data(self, client_connection):
         data = client_connection.readAll().data().decode()
-        logging.info(f"Received data from client: {data}")
+        logging.debug(f"Received data from client: {data}")
         self.update_label(data)
 
     def update_label(self, text):
@@ -61,7 +61,7 @@ class MyDialog(QDialog):
 
 
 def StartGui(socket_path: str):
-    logging.info("--- Start GUI ---")
+    logging.debug("--- Start GUI ---")
     app = QApplication(sys.argv)
     dialog = MyDialog(socket_path)
     dialog.show()

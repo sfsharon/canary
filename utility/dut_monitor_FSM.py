@@ -13,7 +13,7 @@ logging.basicConfig(
                     level=logging.INFO,
                     datefmt='%H:%M:%S')
 
-DUT = "3048"
+DUT = "3062"
 
 DEV_MACHINE_PROMPT_SYMBOL   = "sharonf@DEV107"
 ONL_PROMPT_SYMBOL           = "root@localhost:~#"
