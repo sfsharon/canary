@@ -22,7 +22,9 @@ logging.basicConfig(
 DEV_MACHINE_IP = "172.30.16.107"
 CMD = 'sudo /usr/bin/openfortivpn -c /home/sharonf/my.cfg'
 EXPECT_TIMEOUT = 2
-PING_TIMEOUT   = 1
+PING_TIMEOUT = 1
+NOF_RETRY_TIMEOUTS = 100 # Put in a rather large number, because cannot close pexpect process once openfortivpn has connected, so actually no use in trying to reconnect on timeout.
+                         # Unless OpenFortiVPN itself gave up with some error string such as "Modem hangup", then it can be closed.
 
 # Setting up GUI
 # ==================================================
@@ -81,7 +83,7 @@ def TimeoutRestartPexpect (fsm: FSM) :
     logging.info(f'** TimeoutRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['nof_timeouts'] += 1
     logging.info(f"** TimeoutRestartPexpect ** - Number of Timeouts {fsm.memory['nof_timeouts']} ({fsm.current_state})")
-    if fsm.memory['nof_timeouts'] % 5 == 0 :
+    if fsm.memory['nof_timeouts'] % NOF_RETRY_TIMEOUTS == 0 :
         fsm.memory['is_reset_conn_required'] = True
 
 def PingDevMachine (fsm: FSM) :
