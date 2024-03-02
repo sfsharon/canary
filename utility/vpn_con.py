@@ -165,15 +165,20 @@ def main():
             fsm.memory['nof_reset_connection'] += 1
             fsm.memory['is_reset_conn_required'] = False
             logging.info(f"** Main Loop ** : Restarting pexpect. NOF attempts : {fsm.memory['nof_reset_connection']}")
-            logging.info(f"** Main Loop ** : Closing pexpect_child which has status : \n===============\n{pexpect_child}\n===============\n")
+            # logging.info(f"** Main Loop ** : Closing pexpect_child which has status : \n===============\n{pexpect_child}\n===============\n")
             try:
                 pexpect_child.close(force=True)
                 time.sleep(2)
             except Exception as e:
-                logging.info(f"** Main Loop ** : Got exception {str(e)}\npexpect_child status : \n===============\n{pexpect_child}\n===============\n")
+                logging.info(f"** Main Loop ** : Got exception {str(e)}")
+                # logging.info(f"** Main Loop ** : Got exception {str(e)}\npexpect_child status : \n===============\n{pexpect_child}\n===============\n")
                 if pexpect_child.isalive():
+
                     logging.info(f"** Main Loop ** : Using terminate() on pexpect_child\"")
                     pexpect_child.terminate(force=True)
+                    # logging.info(f"** Main Loop ** : Using kill 9 on pexpect_child\"")
+                    # pexpect_child.kill(9)
+
                     if pexpect_child.isalive():
                         logging.info(f"** Main Loop ** : Can't kill pexpect_child\"")
                         sys.exit(1)

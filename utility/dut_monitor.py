@@ -4,7 +4,7 @@ DUT monitoring using serial connection
 
 import pexpect
 import sys
-import time
+# import time
 
 # Logging
 import logging
