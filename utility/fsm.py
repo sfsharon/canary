@@ -237,6 +237,10 @@ class FSM:
 
         self.input_symbol = input_symbol
         (self.action, self.next_state) = self.get_transition (self.input_symbol, self.current_state)
+
+        if self.current_state != self.next_state :
+            print (f'*** {self.action.__name__} *** Input Symbol: "{input_symbol}" ({self.current_state} -> {self.next_state})')
+
         if self.action is not None:
             self.action (self)
         self.current_state = self.next_state

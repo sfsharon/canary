@@ -1,5 +1,8 @@
 '''
 Keep VPN connection open using FSM
+The visudo file should contain authorization lines for openfortivpn and for kill command :
+    sharonf ALL=(ALL) NOPASSWD: /usr/bin/openfortivpn
+    sharonf ALL=(ALL) NOPASSWD: /usr/bin/openfortivpn
 '''
 
 import sys
@@ -30,10 +33,10 @@ NOF_RETRY_TIMEOUTS = 100 # Put in a rather large number, because cannot close pe
 # ==================================================
 import multiprocessing
 from vpn_gui import StartGui
-# Unix domain socket path
+# Unix domain socket (UDS) path
 SOCKET_PATH = "/tmp/my_unix_socket"
 
-# Create a multiprocessing.Process object for the function
+# Create a multiprocessing.Process object for the GUI function
 try:
     os.remove(SOCKET_PATH)
 except FileNotFoundError:
@@ -51,41 +54,52 @@ def SIGINT_function(sig, frame):
     gui_process.terminate()
     logging.info(f"** SIGINT_function ** Waiting for the GUI gui_process to exit")
     gui_process.join()
+
+    kill_openfortivpn()
+
     logging.info(f"** SIGINT_function ** Exiting program")
     sys.exit(0)
 
 signal.signal(signal.SIGINT, SIGINT_function)
 
+# Utility functions
+# ====================================================
+def kill_openfortivpn() :
+    logging.info(f'!!! kill_openfortivpn !!!')
+    import subprocess
+    try:
+        # Get the process ID (PID) using pidof
+        pid = subprocess.check_output(["pidof", "openfortivpn"], text=True).strip()
+        if pid:
+            # Execute the kill command with sudo
+            subprocess.run(["sudo", "kill", pid], check=True)
+            logging.info(f"!!! Successfully killed process openfortivpn (PID: {pid}) !!!")
+    except subprocess.CalledProcessError:
+        logging.info(f"!!! Failed to kill process: openfortivpn !!!")
 
 # Action functions for the FSM
 # ====================================================
 def ErrorFSM (fsm: FSM):
-    logging.error(f"** ErrorFSM ** ({fsm.current_state}). Input Symbol : \"{fsm.input_symbol}\", Connection Established : {fsm.memory['is_vpn_tunnel_up']}")
     sys.exit(1)
 
-def EnterPassword (fsm: FSM):
-    logging.info(f'** EnterPassword ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
-    fsm.memory['response_to_pexpect'] = '123456'
-
 def ConnEstablished (fsm: FSM) :
-    logging.info(f'** ConnEstablished ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
     fsm.memory['is_vpn_tunnel_up'] = True
 
-def InitRestartPexpect(fsm: FSM) :
-    logging.info(f'** InitRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
+# RESTART PEXPECT
+# -------------------------
+def Init_RestartPexpect(fsm: FSM) :
     fsm.memory['is_reset_conn_required'] = True
 
-def RuntimeRestartPexpect(fsm: FSM) :
-    logging.info(f'** RuntimeRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
+def Runtime_RestartPexpect(fsm: FSM) :
     fsm.memory['is_reset_conn_required'] = True
     
-def TimeoutRestartPexpect (fsm: FSM) :
-    logging.info(f'** TimeoutRestartPexpect ** Input Symbol: "{fsm.input_symbol}" ({fsm.current_state} -> {fsm.next_state})')
+def Timeout_RestartPexpect (fsm: FSM) :
     fsm.memory['nof_timeouts'] += 1
-    logging.info(f"** TimeoutRestartPexpect ** - Number of Timeouts {fsm.memory['nof_timeouts']} ({fsm.current_state})")
     if fsm.memory['nof_timeouts'] % NOF_RETRY_TIMEOUTS == 0 :
         fsm.memory['is_reset_conn_required'] = True
 
+# PING
+# -------------------------
 def PingDevMachine (fsm: FSM) :
     logging.debug(f'** PingDevMachine **')
     import subprocess
@@ -98,16 +112,15 @@ def PingDevMachine (fsm: FSM) :
         fsm.memory['is_ping_successful'] = False
         logging.debug(f"** PingDevMachine ** - {DEV_MACHINE_IP} is down")
 
+
 # FSM Constants
 # ====================================================
 TWO_FACTOR_REQUEST_SYMBOL       = "Two-factor authentication token:"
-PASSWORD_REQUEST_SYMBOL         = "\[sudo\] password for sharonf:"
 SUCCESSFUL_CONNECTION_SYMBOL    = "Tunnel is up and running"
 CLOSED_CONNECTION_ERROR_SYMBOL  = "Closed connection to gateway"
 MODEM_HANGUP_ERROR_SYMBOL       = "Modem hangup"
 
-EXPECTED_SYMBOLS = [PASSWORD_REQUEST_SYMBOL,
-                    TWO_FACTOR_REQUEST_SYMBOL, 
+EXPECTED_SYMBOLS = [TWO_FACTOR_REQUEST_SYMBOL, 
                     CLOSED_CONNECTION_ERROR_SYMBOL,
                     SUCCESSFUL_CONNECTION_SYMBOL,
                     # last two elements are always EOF and TIMEOUT
@@ -115,27 +128,25 @@ EXPECTED_SYMBOLS = [PASSWORD_REQUEST_SYMBOL,
                     pexpect.TIMEOUT]
 def main():
     logging.info("** Beginning The VPN Connection **")
+    
+    kill_openfortivpn()
 
     # Build the FSM
     fsm = FSM(initial_state='CONNECTING')
 
     # Default FSM memory values
     fsm.memory = {  'is_reset_conn_required'  : False,    # Used to close pexpect session and open a new one
-                    'nof_reset_connection'    : 0,        # If Two-factor request is received, the vpn connection is reset and opened again
-                    'is_vpn_tunnel_up'        : False,    # Used to change pexpect timeout if connection established to block indefinitely
+                    'is_ping_successful'      : False,    # Is pinging the DEV machine successful 
+                    'is_vpn_tunnel_up'        : False,    # Used to change pexpect timeout if connection established, to block indefinitely    
                     'response_to_pexpect'     : None,     # Used to send string response back to pexpect
-                    'nof_timeouts'            : 0,
-                    'is_ping_successful'      : False}    # Is pinging the DEV machine successful 
-
-    # fsm.add_transition_any     (state= 'SETUP', action = CreatePexpectProc, next_state = 'CONNECTING')
-    fsm.add_transition         (input_symbol=PASSWORD_REQUEST_SYMBOL,       state='CONNECTING', 
-                                action=EnterPassword,                  next_state='CONNECTING')
+                    'nof_reset_connection'    : 0,        # If Two-factor request is received, the vpn connection is reset and opened again
+                    'nof_timeouts'            : 0}        # Number Of Timeouts
     
     fsm.add_transition         (input_symbol=TWO_FACTOR_REQUEST_SYMBOL,     state='CONNECTING', 
-                                action=InitRestartPexpect,             next_state='CONNECTING')
+                                action=Init_RestartPexpect,             next_state='CONNECTING')
     
     fsm.add_transition         (input_symbol=pexpect.TIMEOUT,               state='CONNECTING', 
-                                action=TimeoutRestartPexpect,          next_state='CONNECTING')    
+                                action=Timeout_RestartPexpect,          next_state='CONNECTING')    
     
     fsm.add_transition         (input_symbol=SUCCESSFUL_CONNECTION_SYMBOL,  state='CONNECTING', 
                                 action=ConnEstablished,                next_state='CONN_ESTABLISHED')
@@ -144,10 +155,10 @@ def main():
                                 action=PingDevMachine,                 next_state='CONN_ESTABLISHED')
 
     fsm.add_transition_list     (list_input_symbols=[MODEM_HANGUP_ERROR_SYMBOL, CLOSED_CONNECTION_ERROR_SYMBOL] ,  state='CONNECTING', 
-                                action=InitRestartPexpect,                                                    next_state='CONNECTING')
+                                action=Init_RestartPexpect,                                                    next_state='CONNECTING')
 
     fsm.add_transition_list     (list_input_symbols=[MODEM_HANGUP_ERROR_SYMBOL, CLOSED_CONNECTION_ERROR_SYMBOL],  state='CONN_ESTABLISHED', 
-                                action=RuntimeRestartPexpect,                                                next_state='CONNECTING')
+                                action=Runtime_RestartPexpect,                                                next_state='CONNECTING')
     
     fsm.set_default_transition (action=ErrorFSM, next_state='EXIT')
     # Configure pexpect object
@@ -165,23 +176,12 @@ def main():
             fsm.memory['nof_reset_connection'] += 1
             fsm.memory['is_reset_conn_required'] = False
             logging.info(f"** Main Loop ** : Restarting pexpect. NOF attempts : {fsm.memory['nof_reset_connection']}")
-            # logging.info(f"** Main Loop ** : Closing pexpect_child which has status : \n===============\n{pexpect_child}\n===============\n")
             try:
-                pexpect_child.close(force=True)
-                time.sleep(2)
+                # pexpect_child.close(force=True) # Does not work
+                kill_openfortivpn()               # Does work
             except Exception as e:
-                logging.info(f"** Main Loop ** : Got exception {str(e)}")
-                # logging.info(f"** Main Loop ** : Got exception {str(e)}\npexpect_child status : \n===============\n{pexpect_child}\n===============\n")
-                if pexpect_child.isalive():
+                logging.info(f"** Main Loop ** : Got exception: {str(e)}")
 
-                    logging.info(f"** Main Loop ** : Using terminate() on pexpect_child\"")
-                    pexpect_child.terminate(force=True)
-                    # logging.info(f"** Main Loop ** : Using kill 9 on pexpect_child\"")
-                    # pexpect_child.kill(9)
-
-                    if pexpect_child.isalive():
-                        logging.info(f"** Main Loop ** : Can't kill pexpect_child\"")
-                        sys.exit(1)
 
             # Create a new pexpect child
             pexpect_child = pexpect.spawn(CMD)
@@ -200,7 +200,7 @@ def main():
         # FSM processing with received input and current state
         fsm.process(EXPECTED_SYMBOLS[i])
 
-        ping_str = ' - No Ping'
+        ping_str = f" - No Ping, timeouts {fsm.memory['nof_timeouts']}"
         if fsm.memory['is_ping_successful']:
             ping_str = ' - Successful Pinging'
 
