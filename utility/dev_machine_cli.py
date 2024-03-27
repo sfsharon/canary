@@ -41,7 +41,7 @@ def _get_dut_alias_to_cmd (device_num: str, device_type: str, command: str) -> s
     print(f"Command {full_command} in aliased to {matches[0]}")
     return matches[0]
 
-def reset_serial_server_connection(device_number, device_type) :
+def reset_serial_server_connection(device_number: str, device_type: str) -> None :
     """
     Issue from Dev machine command "exa-il01-dl-3010-sc"
     exa-il01-dl-3010-sc is aliased to `ts-cl 10.1.10.253 hw-lab-gw-1 lab lab 91'
@@ -66,6 +66,7 @@ def reset_serial_server_connection(device_number, device_type) :
     process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
 
+    logging.info(f"{get_time()} output : {output}, error: {error}")
 
 # ---------------------------------------------------------------------
 # OLD STUFF FROM DUT_CTRL !!!
