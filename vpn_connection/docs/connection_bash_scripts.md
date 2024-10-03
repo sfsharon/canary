@@ -17,7 +17,8 @@ dev_machine_screen_func() {
 
 # Connect to Ixia
 ixiacon_func() {
-  xfreerdp -u admin -p cmpsys2012 10.1.90."$1"
+  # xfreerdp -u admin -p cmpsys2012 10.1.90."$1"
+  xfreerdp /u:admin /p:cmpsys2012 /v:10.1.90."$1" /sec:rdp
 }
 
 # Parse git branch for prompt
