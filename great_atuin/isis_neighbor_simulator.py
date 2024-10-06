@@ -28,13 +28,21 @@ class ISISNeighborSimulator:
         self.router_ip = router_ip
         self.net = net
         self.system_id = net[3:15]
-        self.area_id = self.format_area_id(net[:4])
+        self.area_id = self.extract_area_id(net)
+
+    def extract_area_id(self, net):
+        # Extract the Area ID (everything up to the second dot)
+        parts = net.split('.')
+        area_id = '.'.join(parts[:2])  # Take the first two parts
+        rv = self.format_area_id(area_id)
+        return rv
 
     def format_area_id(self, area):
-        # Ensure area ID is in the correct format (e.g., '49.0001')
+        # Ensure each part of the area ID is padded to two digits
         parts = area.split('.')
-        return '.'.join([part.zfill(2) for part in parts])
-
+        rv = '.'.join([part.zfill(2) for part in parts])
+        return rv
+    
     def craft_hello_packet(self):
         eth = Ether(dst="01:80:c2:00:00:14", type=0x83FE)
         isis_hdr = ISIS_CommonHdr()
@@ -128,7 +136,8 @@ class ISISNeighborSimulator:
             received_areas = []
             for tlv in hello_layer.tlvs:
                 if isinstance(tlv, ISIS_AreaTlv):
-                    received_areas.extend(tlv.areas)
+                    areas = [AreaEntry.areaid for AreaEntry in tlv.areas]
+                    received_areas.extend(areas)
             
             if not received_areas:
                 logging.error("No Area ID found in received packet")
@@ -138,8 +147,10 @@ class ISISNeighborSimulator:
             logging.debug(f"Received Areas: {received_areas}")
 
             if sent_area not in received_areas:
-                logging.debug("Area ID mismatch")
+                logging.info(f"Area ID mismatch - Sent Area {sent_area}, received Area {received_areas}")
                 # return False
+            else :
+                logging.debug(f"Found in received message an area that was sent : {sent_area}")
 
             logging.debug("Response verified successfully")
             return True
