@@ -1,0 +1,15 @@
+test_case:
+  name: "Interface Status Check"
+  description: "Verify interface comes up after configuration"
+  stop_on_failure: true
+  commands:
+    - command: "show interface GigabitEthernet0/1"
+      expected_output: ".*status is up.*"
+      timeout: 5
+    - command: "configure terminal"
+      expected_output: ".*config.*"
+      timeout: 2
+    - command: "interface GigabitEthernet0/1"
+      expected_output: ".*config-if.*"
+      timeout: 2
+
