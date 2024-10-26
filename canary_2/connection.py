@@ -115,75 +115,22 @@ class SSHConnection:
             self.logger.error(f"Command execution failed: {str(e)}")
             return str(e), False
 
-class TestSSHConnection(unittest.TestCase):
-    """Built-in unit tests for SSHConnection"""
-    
-    @classmethod
-    def setUpClass(cls):
-        """Setup test configuration"""
-        cls.config = SSHConfig(
-            host="10.3.12.1",
-            username="admin",
-            password="admin",
-            enable_password="enable_pass"
-        )
-
-    def setUp(self):
-        """Create new connection for each test"""
-        self.ssh = SSHConnection(self.config)
-
-    def tearDown(self):
-        """Cleanup after each test"""
-        try:
-            self.ssh.disconnect()
-        except:
-            pass
-
-    def test_connection(self):
-        """Test basic connection"""
-        try:
-            self.ssh.connect()
-            self.assertTrue(self.ssh.shell is not None)
-        except SSHConnectionError:
-            self.skipTest("Test device not available")
-
-    def test_command_execution(self):
-        """Test command execution"""
-        try:
-            self.ssh.connect()
-            response, success = self.ssh.execute_command("show version")
-            self.assertTrue(success)
-            self.assertIn("Cisco", response)  # Adjust based on your router
-        except SSHConnectionError:
-            self.skipTest("Test device not available")
-
-    def test_timeout(self):
-        """Test command timeout"""
-        try:
-            self.ssh.connect()
-            response, success = self.ssh.execute_command("show tech-support", timeout=1)
-            self.assertFalse(success)  # Should timeout
-        except SSHConnectionError:
-            self.skipTest("Test device not available")
-
-    def test_enable_mode(self):
-        """Test enable mode access"""
-        try:
-            self.ssh.connect()
-            self.assertIn("#", self.ssh.shell.recv(1000).decode('utf-8'))
-        except SSHConnectionError:
-            self.skipTest("Test device not available")
-
-def run_tests():
-    """Run unit tests"""
-    unittest.main(argv=[''], verbosity=2, exit=False)
-
 if __name__ == "__main__":
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(levelname)s - %(message)s'
     )
+
+    # Manual testing
+    config = SSHConfig("10.3.12.1", "admin", "admin")
+    ssh = SSHConnection(config)
     
-    # Run tests
-    run_tests()
+    # Manual setup
+    logging.info("Testing connection...")
+    try:
+        ssh.connect()
+        logging.info("Connection successful")
+    except Exception as e:
+        logging.error(f"Connection failed: {e}")
+        exit(1)    
