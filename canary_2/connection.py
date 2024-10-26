@@ -104,7 +104,7 @@ class SSHConnection:
                     response += chunk
                     
                     # Check if response is complete
-                    if '#' in chunk or '>' in chunk:
+                    if '#' in chunk or 'exaware' in chunk:
                         return response.strip(), True
                         
                 time.sleep(0.1)
@@ -131,6 +131,10 @@ if __name__ == "__main__":
     try:
         ssh.connect()
         logging.info("Connection successful")
+
+        resp, is_success = ssh.execute_command ("show sys mod")
+        logging.info(f"\nSuccess: {is_success}\nResponse:\n{resp}")
+
     except Exception as e:
         logging.error(f"Connection failed: {e}")
         exit(1)    
