@@ -6,8 +6,17 @@ import paramiko
 import time
 import logging
 import unittest
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, List
 from dataclasses import dataclass
+
+@dataclass
+class ProxyConfig:
+    """Configuration for proxy (jump) host"""
+    host: str
+    username: str
+    password: str
+    port: int = 22
+    host_key_algorithms: Optional[List[str]] = None
 
 @dataclass
 class SSHConfig:
@@ -18,6 +27,8 @@ class SSHConfig:
     port: int = 22
     timeout: int = 30
     enable_password: Optional[str] = None
+    proxy: Optional[ProxyConfig] = None
+    host_key_algorithms: Optional[List[str]] = None
 
 class SSHConnectionError(Exception):
     """Custom exception for SSH connection issues"""
@@ -28,21 +39,65 @@ class SSHConnection:
         self.config = config
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.proxy_client = None
         self.shell = None
         self.logger = logging.getLogger(__name__)
-        
-    def connect(self) -> None:
-        """Establishes SSH connection and opens shell"""
+
+    def _create_proxy_channel(self) -> paramiko.Channel:
+        """Creates SSH channel through proxy"""
         try:
-            self.client.connect(
-                hostname=self.config.host,
-                username=self.config.username,
-                password=self.config.password,
-                port=self.config.port,
-                timeout=self.config.timeout,
-                allow_agent=False,
-                look_for_keys=False
+            # Connect to proxy host
+            self.proxy_client = paramiko.SSHClient()
+            self.proxy_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # Connect to proxy
+            transport = paramiko.Transport((self.config.proxy.host, self.config.proxy.port))
+            
+            # Set host key algorithms if specified
+            if self.config.proxy.host_key_algorithms:
+                transport.get_security_options().key_types = tuple(self.config.proxy.host_key_algorithms)
+            
+            transport.connect(
+                username=self.config.proxy.username,
+                password=self.config.proxy.password
             )
+            
+            # Create channel to target through proxy
+            dest_addr = (self.config.host, self.config.port)
+            local_addr = (self.config.proxy.host, self.config.proxy.port)
+            channel = transport.open_channel("direct-tcpip", dest_addr, local_addr)
+            
+            return channel
+            
+        except Exception as e:
+            if self.proxy_client:
+                self.proxy_client.close()
+            raise SSHConnectionError(f"Proxy connection failed: {str(e)}")
+            
+    def connect(self) -> None:
+        """Establishes SSH connection (direct or through proxy) and opens shell"""
+        try:
+            # Set up the transport
+            if self.config.proxy:
+                sock = self._create_proxy_channel()
+                transport = paramiko.Transport(sock)
+            else:
+                transport = paramiko.Transport((self.config.host, self.config.port))
+            
+            # Set host key algorithms if specified
+            if self.config.host_key_algorithms:
+                transport.get_security_options().key_types = tuple(self.config.host_key_algorithms)
+            
+            # Connect transport
+            transport.connect(
+                username=self.config.username,
+                password=self.config.password
+            )
+            
+            # Create client using transport
+            self.client._transport = transport
+            
+            # Create shell
             self.shell = self.client.invoke_shell()
             self.shell.settimeout(self.config.timeout)
             
@@ -71,10 +126,13 @@ class SSHConnection:
             raise SSHConnectionError("Failed to enter enable mode")
 
     def disconnect(self) -> None:
-        """Closes SSH connection"""
+        """Closes SSH connection and proxy if used"""
         if self.shell:
             self.shell.close()
-        self.client.close()
+        if self.client:
+            self.client.close()
+        if self.proxy_client:
+            self.proxy_client.close()
 
     def execute_command(self, command: str, timeout: int = 10) -> Tuple[str, bool]:
         """
@@ -115,26 +173,37 @@ class SSHConnection:
             self.logger.error(f"Command execution failed: {str(e)}")
             return str(e), False
 
+
 if __name__ == "__main__":
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-
-    # Manual testing
-    config = SSHConfig("10.3.12.1", "admin", "admin")
-    ssh = SSHConnection(config)
     
-    # Manual setup
-    logging.info("Testing connection...")
+    # Example usage with proxy jump
+    config = SSHConfig(
+        host="10.3.12.1",
+        username="admin",
+        password="admin",
+        proxy=ProxyConfig(
+            host="172.30.16.107",
+            username="my_dev_user",
+            password="my_dev_password",
+            host_key_algorithms=['ssh-rsa', 'ssh-dss']
+        ),
+        host_key_algorithms=['ssh-rsa', 'ssh-dss']
+    )
+    
+    ssh = SSHConnection(config)
     try:
         ssh.connect()
         logging.info("Connection successful")
+        response, success = ssh.execute_command("show sys mod")
+        logging.info(f"\nSuccess: {success}\nResponse:\n{response}")
 
-        resp, is_success = ssh.execute_command ("show sys mod")
-        logging.info(f"\nSuccess: {is_success}\nResponse:\n{resp}")
-
-    except Exception as e:
+    except SSHConnectionError as e:
         logging.error(f"Connection failed: {e}")
-        exit(1)    
+    finally:
+        ssh.disconnect()
+    
