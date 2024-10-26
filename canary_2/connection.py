@@ -4,7 +4,6 @@ ssh -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -J sharonf@172.30.16.107 admin@10.3.12
 """
 
 # connection.py
-
 import paramiko
 import time
 import logging
@@ -67,7 +66,14 @@ class SSHConnectionError(Exception):
     """Custom exception for SSH connection issues"""
     pass
 
+class PromptTimeoutError(SSHConnectionError):
+    """Custom exception for prompt timeout"""
+    pass
+
 class SSHConnection:
+    EXPECTED_PROMPT = "exaware#"
+    PROMPT_CHECK_INTERVAL = 0.1  # seconds
+    
     def __init__(self, config: Optional[SSHConfig] = None):
         self.config = config or SSHConfig.from_yaml()
         self.client = paramiko.SSHClient()
@@ -75,6 +81,39 @@ class SSHConnection:
         self.proxy_client = None
         self.shell = None
         self.logger = logging.getLogger(__name__)
+
+    def _wait_for_prompt(self, timeout: int = 30) -> bool:
+        """
+        Wait for the expected prompt to appear
+        
+        Args:
+            timeout: Maximum time to wait for prompt in seconds
+            
+        Returns:
+            True if prompt found, False if timeout
+            
+        Raises:
+            PromptTimeoutError: If prompt not found within timeout
+        """
+        self.logger.debug(f"Waiting for prompt '{self.EXPECTED_PROMPT}'")
+        end_time = time.time() + timeout
+        buffer = ""
+        
+        while time.time() < end_time:
+            if self.shell.recv_ready():
+                chunk = self.shell.recv(4096).decode('utf-8')
+                buffer += chunk
+                
+                if self.EXPECTED_PROMPT in buffer:
+                    self.logger.debug("Expected prompt found")
+                    return True
+                    
+            time.sleep(self.PROMPT_CHECK_INTERVAL)
+            
+        raise PromptTimeoutError(
+            f"Timed out waiting for prompt '{self.EXPECTED_PROMPT}'. "
+            f"Last received buffer: {buffer}"
+        )
 
     def _create_proxy_channel(self) -> paramiko.Channel:
         """Creates SSH channel through proxy"""
@@ -108,7 +147,10 @@ class SSHConnection:
             raise SSHConnectionError(f"Proxy connection failed: {str(e)}")
             
     def connect(self) -> None:
-        """Establishes SSH connection (direct or through proxy) and opens shell"""
+        """
+        Establishes SSH connection (direct or through proxy) and opens shell
+        Ensures connection is only established after seeing the expected prompt
+        """
         try:
             # Set up the transport
             if self.config.proxy:
@@ -134,14 +176,14 @@ class SSHConnection:
             self.shell = self.client.invoke_shell()
             self.shell.settimeout(self.config.timeout)
             
-            # Clear initial buffer
-            time.sleep(1)
-            self.shell.recv(10000)
+            # Wait for initial prompt
+            if not self._wait_for_prompt():
+                raise SSHConnectionError("Failed to get initial prompt")
             
-            # Enter enable mode if password provided
-            if self.config.enable_password:
-                self._enter_enable_mode()
+
                 
+        except PromptTimeoutError as e:
+            raise SSHConnectionError(f"Failed to get expected prompt: {str(e)}")
         except paramiko.SSHException as e:
             raise SSHConnectionError(f"SSH connection failed: {str(e)}")
         except Exception as e:
@@ -153,10 +195,10 @@ class SSHConnection:
         time.sleep(1)
         self.shell.recv(1000)  # Clear buffer
         self.shell.send(f'{self.config.enable_password}\n')
-        time.sleep(1)
-        response = self.shell.recv(1000).decode('utf-8')
-        if '#' not in response:
-            raise SSHConnectionError("Failed to enter enable mode")
+        
+        # Wait for prompt after enable command
+        if not self._wait_for_prompt():
+            raise SSHConnectionError("Failed to get prompt after enable command")
 
     def disconnect(self) -> None:
         """Closes SSH connection and proxy if used"""
@@ -185,7 +227,7 @@ class SSHConnection:
             # Send command
             self.shell.send(command + '\n')
             
-            # Wait for response
+            # Wait for response and prompt
             response = ''
             end_time = time.time() + timeout
             
@@ -194,11 +236,11 @@ class SSHConnection:
                     chunk = self.shell.recv(4096).decode('utf-8')
                     response += chunk
                     
-                    # Check if response is complete
-                    if 'exaware#' in chunk :
+                    # Check if response is complete (includes prompt)
+                    if self.EXPECTED_PROMPT in chunk:
                         return response.strip(), True
                         
-                time.sleep(0.1)
+                time.sleep(self.PROMPT_CHECK_INTERVAL)
                 
             return response.strip(), False  # Timeout occurred
             
