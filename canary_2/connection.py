@@ -1,11 +1,15 @@
-""" SSH Connection handling """
+""" SSH Connection handling 
+SSH-ing through proxy (dev machine) :
+ssh -o HostKeyAlgorithms=+ssh-rsa,ssh-dss -J sharonf@172.30.16.107 admin@10.3.12.1
+"""
 
 # connection.py
 
 import paramiko
 import time
 import logging
-import unittest
+import yaml
+import os
 from typing import Optional, Tuple, Dict, List
 from dataclasses import dataclass
 
@@ -30,13 +34,42 @@ class SSHConfig:
     proxy: Optional[ProxyConfig] = None
     host_key_algorithms: Optional[List[str]] = None
 
+    @classmethod
+    def from_yaml(cls):
+        """Load configuration from YAML file in the same directory"""
+        config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        # Create proxy config if specified
+        proxy = None
+        if 'proxy' in config:
+            proxy = ProxyConfig(
+                host=config['proxy']['host'],
+                username=config['proxy']['username'],
+                password=config['proxy']['password'],
+                port=config['proxy'].get('port', 22),
+                host_key_algorithms=config['proxy'].get('host_key_algorithms')
+            )
+
+        return cls(
+            host=config['router']['host'],
+            username=config['router']['username'],
+            password=config['router']['password'],
+            port=config['router'].get('port', 22),
+            timeout=config.get('timeouts', {}).get('connection', 30),
+            enable_password=config['router'].get('enable_password'),
+            proxy=proxy,
+            host_key_algorithms=config['router'].get('host_key_algorithms')
+        )
+
 class SSHConnectionError(Exception):
     """Custom exception for SSH connection issues"""
     pass
 
 class SSHConnection:
-    def __init__(self, config: SSHConfig):
-        self.config = config
+    def __init__(self, config: Optional[SSHConfig] = None):
+        self.config = config or SSHConfig.from_yaml()
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.proxy_client = None
@@ -162,7 +195,7 @@ class SSHConnection:
                     response += chunk
                     
                     # Check if response is complete
-                    if '#' in chunk or 'exaware' in chunk:
+                    if 'exaware#' in chunk :
                         return response.strip(), True
                         
                 time.sleep(0.1)
@@ -175,27 +208,14 @@ class SSHConnection:
 
 
 if __name__ == "__main__":
-    # Setup logging
+    # Setup logging   
     logging.basicConfig(
+        format='\n%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # Example usage with proxy jump
-    config = SSHConfig(
-        host="10.3.12.1",
-        username="admin",
-        password="admin",
-        proxy=ProxyConfig(
-            host="172.30.16.107",
-            username="my_dev_user",
-            password="my_dev_password",
-            host_key_algorithms=['ssh-rsa', 'ssh-dss']
-        ),
-        host_key_algorithms=['ssh-rsa', 'ssh-dss']
-    )
-    
-    ssh = SSHConnection(config)
+        datefmt='%H:%M:%S')
+
+    # Create SSH connection using config from YAML
+    ssh = SSHConnection()
     try:
         ssh.connect()
         logging.info("Connection successful")
@@ -206,4 +226,3 @@ if __name__ == "__main__":
         logging.error(f"Connection failed: {e}")
     finally:
         ssh.disconnect()
-    
