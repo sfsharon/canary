@@ -200,7 +200,7 @@ class SSHConnection:
             f"Last received buffer: {buffer}"
         )
 
-    def _enter_configure_mode(self) -> None:
+    def enter_configure_mode(self) -> None:
         """Enters configuration mode"""
         self.expected_prompt = self.EXPECTED_CONF_PROMPT
         self.shell.send('configure\n')
@@ -225,11 +225,13 @@ class SSHConnection:
 
         try:
             # Send command
+            logging.info(f"Sending command \"{command}\"")
             self.shell.send(command + '\n')
             
             # Wait for response and prompt
             response = ''
-            end_time = time.time() + self.config.command_timeout
+            start_time = time.time()
+            end_time   = start_time + self.config.commit_timeout
             
             while time.time() < end_time:
                 if self.shell.recv_ready():
@@ -241,7 +243,8 @@ class SSHConnection:
                         return response.strip(), True
                         
                 time.sleep(self.PROMPT_CHECK_INTERVAL)
-                
+
+            logging.error(f"Command {command} - Timeout {self.config.commit_timeout} seconds exceeded waiting for prompt {self.expected_prompt}")    
             return response.strip(), False  # Timeout occurred
             
         except Exception as e:
@@ -257,8 +260,9 @@ class SSHConnection:
         if self.proxy_client:
             self.proxy_client.close()
 
-
 if __name__ == "__main__":
+    NUM_OF_ITERATIONS = 7
+
     # Setup logging   
     logging.basicConfig(
         format='\n%(asctime)s.%(msecs)03d [%(filename)s line %(lineno)d] %(levelname)-8s %(message)s',
@@ -270,8 +274,28 @@ if __name__ == "__main__":
     try:
         ssh.connect()
         logging.info("Connection successful")
+
+        # Show system module
         response, success = ssh.execute_command("show sys mod")
         logging.info(f"\nSuccess: {success}\nResponse:\n{response}")
+
+        # Change to Configuration mode
+        ssh.enter_configure_mode()
+
+        # Run testing iterations
+        for i in range(NUM_OF_ITERATIONS) :
+            logging.info(f"Iteration {i + 1}\n" + "-" * 80)
+            # Clean previous configuration
+            response, success = ssh.execute_command("load override exaSystemConf_pc3012.cfg ; commit")
+            logging.info(f"\nSuccess: {success}\nResponse:\n{response}")
+            if success == False :
+                logging.error("Bailing out")
+
+            # Configure new configuration
+            response, success = ssh.execute_command("load merge TC10_112_PwScale.cfg ; commit")
+            logging.info(f"\nSuccess: {success}\nResponse:\n{response}")
+            if success == False :
+                logging.error("Bailing out")
 
     except SSHConnectionError as e:
         logging.error(f"Connection failed: {e}")

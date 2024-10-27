@@ -2,7 +2,7 @@
 # config.yaml
 
 router:
-  host    : "10.3.28.1"
+  host    : "10.3.12.1"
   username: "admin"
   password: "admin"
   port    : 22
@@ -21,7 +21,7 @@ proxy:
 
 timeouts:
   connection: 30  # Seconds
-  command   : 10  # Seconds
+  command   : 180  # Seconds
   commit    : 600 # Seconds
 
 logging:
