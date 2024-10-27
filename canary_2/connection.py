@@ -11,6 +11,9 @@ import yaml
 import os
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
+from tqdm import tqdm
+import sys
+from datetime import datetime, timedelta
 
 @dataclass
 class ProxyConfig:
@@ -80,10 +83,10 @@ class PromptTimeoutError(SSHConnectionError):
     pass
 
 class SSHConnection:
-    EXPECTED_OPER_PROMPT = "exaware#"
-    EXPECTED_CONF_PROMPT = "exaware(config)#"
-
-    PROMPT_CHECK_INTERVAL = 0.1  # seconds
+    EXPECTED_OPER_PROMPT     = "exaware#"
+    EXPECTED_CONF_PROMPT     = "exaware(config)#"
+    PROMPT_CHECK_INTERVAL    = 0.1  # seconds
+    PROGRESS_UPDATE_INTERVAL = 0.5  # seconds
     
     def __init__(self, config: Optional[SSHConfig] = None):
         self.config = config or SSHConfig.from_yaml()
@@ -170,10 +173,7 @@ class SSHConnection:
     def _wait_for_prompt(self) -> bool:
         """
         Wait for the expected prompt to appear
-        
-        Args:
-            timeout: Maximum time to wait for prompt in seconds
-            
+                  
         Returns:
             True if prompt found, False if timeout
             
@@ -209,13 +209,17 @@ class SSHConnection:
         if not self._wait_for_prompt():
             raise SSHConnectionError("Failed to get prompt after enable command")
 
+    @staticmethod
+    def _format_remaining_time(seconds: float) -> str:
+        """Format remaining time as MM:SS"""
+        return str(timedelta(seconds=int(seconds))).split('.')[0]
+
     def execute_command(self, command: str) -> Tuple[str, bool]:
         """
-        Executes command and returns response
+        Executes command and returns response with progress bar
         
         Args:
             command: Command to execute
-            timeout: Command timeout in seconds
             
         Returns:
             Tuple of (response_text, success_flag)
@@ -228,25 +232,59 @@ class SSHConnection:
             logging.info(f"Sending command \"{command}\"")
             self.shell.send(command + '\n')
             
-            # Wait for response and prompt
+            # Initialize progress tracking
             response = ''
             start_time = time.time()
-            end_time   = start_time + self.config.commit_timeout
-            
-            while time.time() < end_time:
-                if self.shell.recv_ready():
-                    chunk = self.shell.recv(4096).decode('utf-8')
-                    response += chunk
-                    
-                    # Check if response is complete (includes prompt)
-                    if self.expected_prompt in chunk:
-                        return response.strip(), True
-                        
-                time.sleep(self.PROMPT_CHECK_INTERVAL)
+            end_time = start_time + self.config.commit_timeout
+            total_timeout = self.config.commit_timeout
 
+            # Create progress bar
+            with tqdm(
+                total=total_timeout,
+                desc=f"Executing: {command}",
+                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n:.1f}/{total:.1f}s [ETA: {remaining}]',
+                unit='s',
+                file=sys.stdout
+            ) as pbar:
+                
+                last_update = start_time
+                completion_time = None
+                
+                while time.time() < end_time:
+                    current_time = time.time()
+                    elapsed = current_time - start_time
+                    
+                    # Only update if we haven't completed the command
+                    if completion_time is None:                    
+                        # Update progress bar at specified interval
+                        if current_time - last_update >= self.PROGRESS_UPDATE_INTERVAL:
+                            pbar.n = elapsed
+                            remaining_time = self._format_remaining_time(total_timeout - elapsed)
+                            pbar.set_postfix({'Remaining': remaining_time}, refresh=True)
+                            last_update = current_time
+                    
+                    # Check for response
+                    if self.shell.recv_ready():
+                        chunk = self.shell.recv(4096).decode('utf-8')
+                        response += chunk
+                        
+                        # Check if response is complete (includes prompt)
+                        if self.expected_prompt in chunk and completion_time is None:
+                            completion_time = elapsed
+                            # Set the final progress bar position
+                            pbar.n = completion_time
+                            pbar.refresh()
+                            # Update description to show completion
+                            pbar.set_description(f"Completed: {command}")
+                            pbar.set_postfix({'Time': f'{completion_time:.1f}s'}, refresh=True)
+                            return response.strip(), True
+                    
+                    time.sleep(self.PROMPT_CHECK_INTERVAL)
+
+            # If we get here, timeout occurred
             logging.error(f"Command {command} - Timeout {self.config.commit_timeout} seconds exceeded waiting for prompt {self.expected_prompt}")    
-            return response.strip(), False  # Timeout occurred
-            
+            return response.strip(), False
+                    
         except Exception as e:
             self.logger.error(f"Command execution failed: {str(e)}")
             return str(e), False
