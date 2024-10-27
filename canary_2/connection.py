@@ -9,7 +9,7 @@ import time
 import logging
 import yaml
 import os
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, List
 from dataclasses import dataclass
 
 @dataclass
@@ -18,18 +18,26 @@ class ProxyConfig:
     host: str
     username: str
     password: str
-    port: int = 22
+    port: int
     host_key_algorithms: Optional[List[str]] = None
 
 @dataclass
 class SSHConfig:
     """Configuration for SSH connection"""
+
+    # Class defaults
+    DEFAULT_PORT = 22
+    DEFAULT_CONNECTION_TIMEOUT  = 30
+    DEFAULT_COMMAND_TIMEOUT     = 100
+    DEFAULT_COMMIT_TIMEOUT      = 600
+
     host: str
     username: str
     password: str
-    port: int = 22
-    timeout: int = 30
-    enable_password: Optional[str] = None
+    port: int = DEFAULT_PORT
+    connection_timeout: int = DEFAULT_CONNECTION_TIMEOUT
+    command_timeout: int    = DEFAULT_COMMAND_TIMEOUT
+    commit_timeout: int     = DEFAULT_COMMIT_TIMEOUT
     proxy: Optional[ProxyConfig] = None
     host_key_algorithms: Optional[List[str]] = None
 
@@ -44,22 +52,23 @@ class SSHConfig:
         proxy = None
         if 'proxy' in config:
             proxy = ProxyConfig(
-                host=config['proxy']['host'],
-                username=config['proxy']['username'],
-                password=config['proxy']['password'],
-                port=config['proxy'].get('port', 22),
-                host_key_algorithms=config['proxy'].get('host_key_algorithms')
+                host                = config['proxy']['host'],
+                username            = config['proxy']['username'],
+                password            = config['proxy']['password'],
+                port                = config['proxy'].get('port', cls.DEFAULT_PORT),
+                host_key_algorithms = config['proxy'].get('host_key_algorithms')
             )
 
         return cls(
-            host=config['router']['host'],
-            username=config['router']['username'],
-            password=config['router']['password'],
-            port=config['router'].get('port', 22),
-            timeout=config.get('timeouts', {}).get('connection', 30),
-            enable_password=config['router'].get('enable_password'),
-            proxy=proxy,
-            host_key_algorithms=config['router'].get('host_key_algorithms')
+            host                = config['router']['host'],
+            username            = config['router']['username'],
+            password            = config['router']['password'],
+            port                = config['router'].get('port', cls.DEFAULT_PORT),
+            connection_timeout  = config.get('timeouts', {}).get('connection',  cls.DEFAULT_CONNECTION_TIMEOUT),
+            command_timeout     = config.get('timeouts', {}).get('command',     cls.DEFAULT_COMMAND_TIMEOUT),
+            commit_timeout      = config.get('timeouts', {}).get('commit',      cls.DEFAULT_COMMIT_TIMEOUT),
+            proxy               = proxy,
+            host_key_algorithms = config['router'].get('host_key_algorithms')
         )
 
 class SSHConnectionError(Exception):
@@ -71,49 +80,20 @@ class PromptTimeoutError(SSHConnectionError):
     pass
 
 class SSHConnection:
-    EXPECTED_PROMPT = "exaware#"
+    EXPECTED_OPER_PROMPT = "exaware#"
+    EXPECTED_CONF_PROMPT = "exaware(config)#"
+
     PROMPT_CHECK_INTERVAL = 0.1  # seconds
     
     def __init__(self, config: Optional[SSHConfig] = None):
         self.config = config or SSHConfig.from_yaml()
+
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.proxy_client = None
         self.shell = None
         self.logger = logging.getLogger(__name__)
-
-    def _wait_for_prompt(self, timeout: int = 30) -> bool:
-        """
-        Wait for the expected prompt to appear
-        
-        Args:
-            timeout: Maximum time to wait for prompt in seconds
-            
-        Returns:
-            True if prompt found, False if timeout
-            
-        Raises:
-            PromptTimeoutError: If prompt not found within timeout
-        """
-        self.logger.debug(f"Waiting for prompt '{self.EXPECTED_PROMPT}'")
-        end_time = time.time() + timeout
-        buffer = ""
-        
-        while time.time() < end_time:
-            if self.shell.recv_ready():
-                chunk = self.shell.recv(4096).decode('utf-8')
-                buffer += chunk
-                
-                if self.EXPECTED_PROMPT in buffer:
-                    self.logger.debug("Expected prompt found")
-                    return True
-                    
-            time.sleep(self.PROMPT_CHECK_INTERVAL)
-            
-        raise PromptTimeoutError(
-            f"Timed out waiting for prompt '{self.EXPECTED_PROMPT}'. "
-            f"Last received buffer: {buffer}"
-        )
+        self.expected_prompt = self.EXPECTED_OPER_PROMPT
 
     def _create_proxy_channel(self) -> paramiko.Channel:
         """Creates SSH channel through proxy"""
@@ -174,14 +154,12 @@ class SSHConnection:
             
             # Create shell
             self.shell = self.client.invoke_shell()
-            self.shell.settimeout(self.config.timeout)
+            self.shell.settimeout(self.config.connection_timeout)
             
             # Wait for initial prompt
             if not self._wait_for_prompt():
                 raise SSHConnectionError("Failed to get initial prompt")
-            
-
-                
+           
         except PromptTimeoutError as e:
             raise SSHConnectionError(f"Failed to get expected prompt: {str(e)}")
         except paramiko.SSHException as e:
@@ -189,27 +167,49 @@ class SSHConnection:
         except Exception as e:
             raise SSHConnectionError(f"Unexpected error: {str(e)}")
 
-    def _enter_enable_mode(self) -> None:
-        """Enters enable mode using provided enable password"""
-        self.shell.send('enable\n')
-        time.sleep(1)
-        self.shell.recv(1000)  # Clear buffer
-        self.shell.send(f'{self.config.enable_password}\n')
+    def _wait_for_prompt(self) -> bool:
+        """
+        Wait for the expected prompt to appear
         
-        # Wait for prompt after enable command
+        Args:
+            timeout: Maximum time to wait for prompt in seconds
+            
+        Returns:
+            True if prompt found, False if timeout
+            
+        Raises:
+            PromptTimeoutError: If prompt not found within timeout
+        """
+        self.logger.debug(f"Waiting for prompt '{self.expected_prompt}'")
+        end_time = time.time() + self.config.command_timeout
+        buffer = ""
+        
+        while time.time() < end_time:
+            if self.shell.recv_ready():
+                chunk = self.shell.recv(4096).decode('utf-8')
+                buffer += chunk
+                
+                if self.expected_prompt in buffer:
+                    self.logger.debug("Expected prompt found")
+                    return True
+                    
+            time.sleep(self.PROMPT_CHECK_INTERVAL)
+            
+        raise PromptTimeoutError(
+            f"Timed out waiting for prompt '{self.expected_prompt}'. "
+            f"Last received buffer: {buffer}"
+        )
+
+    def _enter_configure_mode(self) -> None:
+        """Enters configuration mode"""
+        self.expected_prompt = self.EXPECTED_CONF_PROMPT
+        self.shell.send('configure\n')
+       
+        # Wait for prompt after configure command
         if not self._wait_for_prompt():
             raise SSHConnectionError("Failed to get prompt after enable command")
 
-    def disconnect(self) -> None:
-        """Closes SSH connection and proxy if used"""
-        if self.shell:
-            self.shell.close()
-        if self.client:
-            self.client.close()
-        if self.proxy_client:
-            self.proxy_client.close()
-
-    def execute_command(self, command: str, timeout: int = 10) -> Tuple[str, bool]:
+    def execute_command(self, command: str) -> Tuple[str, bool]:
         """
         Executes command and returns response
         
@@ -229,7 +229,7 @@ class SSHConnection:
             
             # Wait for response and prompt
             response = ''
-            end_time = time.time() + timeout
+            end_time = time.time() + self.config.command_timeout
             
             while time.time() < end_time:
                 if self.shell.recv_ready():
@@ -237,7 +237,7 @@ class SSHConnection:
                     response += chunk
                     
                     # Check if response is complete (includes prompt)
-                    if self.EXPECTED_PROMPT in chunk:
+                    if self.expected_prompt in chunk:
                         return response.strip(), True
                         
                 time.sleep(self.PROMPT_CHECK_INTERVAL)
@@ -247,6 +247,15 @@ class SSHConnection:
         except Exception as e:
             self.logger.error(f"Command execution failed: {str(e)}")
             return str(e), False
+
+    def disconnect(self) -> None:
+        """Closes SSH connection and proxy if used"""
+        if self.shell:
+            self.shell.close()
+        if self.client:
+            self.client.close()
+        if self.proxy_client:
+            self.proxy_client.close()
 
 
 if __name__ == "__main__":

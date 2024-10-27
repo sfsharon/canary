@@ -2,28 +2,27 @@
 # config.yaml
 
 router:
-  host: "10.3.12.1"
+  host    : "10.3.28.1"
   username: "admin"
   password: "admin"
-  port: 22
-  enable_password: "enable_secret"
+  port    : 22
   host_key_algorithms:
     - "ssh-rsa"
     - "ssh-dss"
 
 proxy:
-  host: "172.30.16.107"
+  host    : "172.30.16.107"
   username: "my_dev_user"
   password: "my_dev_password"
-  port: 22
+  port    : 22
   host_key_algorithms:
     - "ssh-rsa"
     - "ssh-dss"
 
 timeouts:
-  connection: 30
-  command: 10
-  global: 300
+  connection: 30  # Seconds
+  command   : 10  # Seconds
+  commit    : 600 # Seconds
 
 logging:
   level: "INFO"
