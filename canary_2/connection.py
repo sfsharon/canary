@@ -299,7 +299,7 @@ class SSHConnection:
             self.proxy_client.close()
 
 if __name__ == "__main__":
-    NUM_OF_ITERATIONS = 7
+    NUM_OF_ITERATIONS = 10
 
     # Setup logging   
     logging.basicConfig(
@@ -320,18 +320,30 @@ if __name__ == "__main__":
         # Change to Configuration mode
         ssh.enter_configure_mode()
 
+        # Initialization - Remove previous configuration
+        logging.info(f"Initialization - Remove previous configuration")
+        # Clean previous configuration
+        response, success = ssh.execute_command("load override exaSystemConf_pc3012.cfg ; commit")
+        logging.info(f"Success: {success}")
+        logging.debug(f"\nResponse:\n{response}")
+        if success == False :
+            logging.error("Bailing out")
+
         # Run testing iterations
         for i in range(NUM_OF_ITERATIONS) :
             logging.info(f"Iteration {i + 1}\n" + "-" * 80)
-            # Clean previous configuration
-            response, success = ssh.execute_command("load override exaSystemConf_pc3012.cfg ; commit")
-            logging.info(f"\nSuccess: {success}\nResponse:\n{response}")
-            if success == False :
-                logging.error("Bailing out")
 
             # Configure new configuration
             response, success = ssh.execute_command("load merge TC10_112_PwScale.cfg ; commit")
-            logging.info(f"\nSuccess: {success}\nResponse:\n{response}")
+            logging.info(f"Success: {success}")
+            logging.debug(f"\nResponse:\n{response}")
+            if success == False :
+                logging.error("Bailing out")
+
+            # Clean previous configuration
+            response, success = ssh.execute_command("load override exaSystemConf_pc3012.cfg ; commit")
+            logging.info(f"Success: {success}")
+            logging.debug(f"\nResponse:\n{response}")
             if success == False :
                 logging.error("Bailing out")
 
