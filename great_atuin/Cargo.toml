@@ -1,0 +1,11 @@
+[package]
+name = "great_atuin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+env_logger = "0.9"
+pcap = "1.0"
+pnet = "0.33"
+hex = "0.4"
