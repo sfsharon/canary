@@ -1,7 +1,8 @@
 use std::{thread, time::Duration};
 use log::{info, debug, error};
 use pcap::{Device, Capture};
-use pnet::packet::{ethernet::{EthernetPacket, MutableEthernetPacket}, Packet};
+// use pnet::packet::{ethernet::{EthernetPacket, MutableEthernetPacket}, Packet};
+use pnet::packet::{ethernet::EthernetPacket, Packet};
 use hex;
 
 // Constants
@@ -111,7 +112,7 @@ impl ISISNeighborSimulator {
             .open()
             .unwrap();
 
-        cap.sendpacket(&packet).expect("Failed to send packet");
+        cap.sendpacket(&packet[..]).expect("Failed to send packet");
         info!("Sent ISIS Hello packet");
         
         packet
