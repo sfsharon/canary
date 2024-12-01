@@ -6,6 +6,9 @@ use hex;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use env_logger::{Builder, fmt::Formatter};
+use std::io::Write;
+use chrono::Local;
 
 // Constants
 const ISIS_P2P_HELLO_TYPE: u8 = 17;
@@ -223,26 +226,61 @@ impl ISISNeighborSimulator {
             return false;
         }
 
-        let eth_packet = match EthernetPacket::new(received_packet) {
-            Some(packet) => packet,
-            None => {
-                error!("Failed to parse Ethernet packet");
+        // Check if it's a Dot3 or Ethernet frame based on the EtherType/Length field
+        let ethertype_or_length = u16::from_be_bytes([received_packet[12], received_packet[13]]);
+        if ethertype_or_length <= 1500 {
+            // Likely a Dot3 frame (length field)
+            info!("Packet identified as Dot3");
+
+            // Check for LLC header (DSAP, SSAP, Control fields)
+            if received_packet.len() < 17 {
+                error!("Dot3 frame too short for LLC");
                 return false;
             }
-        };
 
-        if eth_packet.get_ethertype().0 != ETHERTYPE_ISIS {
-            error!("Not an ISIS packet");
-            return false;
-        }
+            // Validate DSAP and SSAP (expected 0xFE for IS-IS Hello)
+            if received_packet[14] != 0xFE || received_packet[15] != 0xFE {
+                error!("Invalid DSAP or SSAP value in Dot3 frame");
+                return false;
+            }
+            
+            // // Check for ISIS SNAP OUI (Organizationally Unique Identifier)
+            // if &received_packet[16..19] != &[0x00, 0x00, 0x83] {
+            //     error!("Not an ISIS SNAP packet");
+            //     return false;
+            // }
 
-        let payload = eth_packet.payload();
+            // Extract payload after LLC/SNAP header
+            let payload = &received_packet[17..];
+            return self.verify_isis_payload(payload);
+        } else {
+            // Ethernet frame (EtherType field)
+            debug!("Packet identified as Ethernet");
+
+            let eth_packet = match EthernetPacket::new(received_packet) {
+                Some(packet) => packet,
+                None => {
+                    error!("Failed to parse Ethernet packet");
+                    return false;
+                }
+            };
+            if eth_packet.get_ethertype().0 != ETHERTYPE_ISIS {
+                error!("Not an ISIS packet");
+                return false;
+            }
+
+            let payload = eth_packet.payload();
+            return self.verify_isis_payload(payload);
+        }   
+    }     
+
+    fn verify_isis_payload(&self, payload: &[u8]) -> bool {
         if payload.len() < 3 {
             error!("ISIS payload too short");
             return false;
         }
-
-        let pdu_type = payload[1];
+    
+        let pdu_type = payload[4];
         match pdu_type {
             15 => info!("Received L1 LAN Hello"),
             16 => info!("Received L2 LAN Hello"),
@@ -252,17 +290,17 @@ impl ISISNeighborSimulator {
                 return false;
             }
         }
-
-        let circuit_type = payload[5];
+    
+        let circuit_type = payload[8];
         if ![1, 2, 3].contains(&circuit_type) {
             error!("Incorrect circuit type");
             return false;
         }
-
+    
         debug!("Response verified successfully");
         true
     }
-
+    
     pub fn run(&self, running: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
         while running.load(Ordering::Relaxed) {
             let sent_packet = self.send_hello()?;
@@ -284,6 +322,7 @@ impl ISISNeighborSimulator {
         Ok(())
     }
 }
+
 
 fn run_ut(simulator: &ISISNeighborSimulator) -> Result<(), Box<dyn Error>> {
     let received_isis_hello_pkt_str = "0180c2000015d077ceda710705d7fefe03831b01001001000002000701000003001e05d44000070100000306d301008102cc8e01040349097284040506070908ff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008";
@@ -318,8 +357,19 @@ mod tests {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize logging
-    env_logger::init();
+    // Initialize logging with local time
+    Builder::from_default_env()
+        .filter(None, log::LevelFilter::Info) // Set the default level to `info`
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        .init();   
 
     const MODE_UT: u8 = 1;
     const MODE_OPERATIONAL: u8 = 2;
