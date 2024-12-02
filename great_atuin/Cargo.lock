@@ -155,7 +155,6 @@ dependencies = [
  "humantime",
  "is-terminal",
  "log",
- "regex",
  "termcolor",
 ]
 
@@ -390,9 +389,9 @@ checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
 
 [[package]]
 name = "pnet"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "130c5b738eeda2dc5796fe2671e49027e6935e817ab51b930a36ec9e6a206a64"
+checksum = "cd959a8268165518e2bf5546ba84c7b3222744435616381df3c456fe8d983576"
 dependencies = [
  "ipnetwork",
  "pnet_base",
@@ -404,18 +403,18 @@ dependencies = [
 
 [[package]]
 name = "pnet_base"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe4cf6fb3ab38b68d01ab2aea03ed3d1132b4868fa4e06285f29f16da01c5f4c"
+checksum = "872e46346144ebf35219ccaa64b1dffacd9c6f188cd7d012bd6977a2a838f42e"
 dependencies = [
  "no-std-net",
 ]
 
 [[package]]
 name = "pnet_datalink"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad5854abf0067ebbd3967f7d45ebc8976ff577ff0c7bd101c4973ae3c70f98fe"
+checksum = "c302da22118d2793c312a35fb3da6846cb0fab6c3ad53fd67e37809b06cdafce"
 dependencies = [
  "ipnetwork",
  "libc",
@@ -426,30 +425,30 @@ dependencies = [
 
 [[package]]
 name = "pnet_macros"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "688b17499eee04a0408aca0aa5cba5fc86401d7216de8a63fdf7a4c227871804"
+checksum = "2a780e80005c2e463ec25a6e9f928630049a10b43945fea83207207d4a7606f4"
 dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "syn",
+ "syn 1.0.109",
 ]
 
 [[package]]
 name = "pnet_macros_support"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eea925b72f4bd37f8eab0f221bbe4c78b63498350c983ffa9dd4bcde7e030f56"
+checksum = "e6d932134f32efd7834eb8b16d42418dac87086347d1bc7d142370ef078582bc"
 dependencies = [
  "pnet_base",
 ]
 
 [[package]]
 name = "pnet_packet"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9a005825396b7fe7a38a8e288dbc342d5034dac80c15212436424fef8ea90ba"
+checksum = "8bde678bbd85cb1c2d99dc9fc596e57f03aa725f84f3168b0eaf33eeccb41706"
 dependencies = [
  "glob",
  "pnet_base",
@@ -459,9 +458,9 @@ dependencies = [
 
 [[package]]
 name = "pnet_sys"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "417c0becd1b573f6d544f73671070b039051e5ad819cc64aa96377b536128d00"
+checksum = "faf7a58b2803d818a374be9278a1fe8f88fce14b936afbe225000cfcd9c73f16"
 dependencies = [
  "libc",
  "winapi",
@@ -469,9 +468,9 @@ dependencies = [
 
 [[package]]
 name = "pnet_transport"
-version = "0.34.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2637e14d7de974ee2f74393afccbc8704f3e54e6eb31488715e72481d1662cc3"
+checksum = "813d1c0e4defbe7ee22f6fe1755f122b77bfb5abe77145b1b5baaf463cab9249"
 dependencies = [
  "libc",
  "pnet_base",
@@ -566,7 +565,7 @@ checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -604,6 +603,17 @@ dependencies = [
  "term",
  "thread_local",
  "time",
+]
+
+[[package]]
+name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
 ]
 
 [[package]]
@@ -660,7 +670,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.89",
 ]
 
 [[package]]
@@ -738,7 +748,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.89",
  "wasm-bindgen-shared",
 ]
 
@@ -760,7 +770,7 @@ checksum = "bf59002391099644be3524e23b781fa43d2be0c5aa0719a18c0731b9d195cab6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.89",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
