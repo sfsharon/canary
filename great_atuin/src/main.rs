@@ -6,11 +6,13 @@ use hex;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use env_logger::{Builder, fmt::Formatter};
+use env_logger::Builder;
 use std::io::Write;
 use chrono::Local;
 
 // Constants
+const ISIS_L1_LAN_HELLO_TYPE: u8 = 15;
+const ISIS_L2_LAN_HELLO_TYPE: u8 = 16;
 const ISIS_P2P_HELLO_TYPE: u8 = 17;
 const ISIS_MULTICAST_MAC: [u8; 6] = [0x01, 0x80, 0xc2, 0x00, 0x00, 0x14];
 const ETHERTYPE_ISIS: u16 = 0x83FE;
@@ -27,19 +29,19 @@ enum CircuitType {
 
 #[derive(Debug, Copy, Clone)]
 enum PDUType {
-    L1LanHello = 15,
-    L2LanHello = 16,
-    P2PHello = 17,
+    L1LanHello = ISIS_L1_LAN_HELLO_TYPE as isize,
+    L2LanHello = ISIS_L2_LAN_HELLO_TYPE as isize,
+    P2PHello   = ISIS_P2P_HELLO_TYPE as isize,
 }
-
+ 
 #[derive(Debug, thiserror::Error)]
 enum ISISError {
     #[error("Device not found: {0}")]
     DeviceNotFound(String),
     #[error("Capture error: {0}")]
     CaptureError(String),
-    #[error("Packet error: {0}")]
-    PacketError(String),
+    // #[error("Packet error: {0}")]
+    // PacketError(String),
 }
 
 // STRUCTS
@@ -280,25 +282,45 @@ impl ISISNeighborSimulator {
             return false;
         }
     
-        let pdu_type = payload[4];
+    
+        // Convert the PDU type byte to PDUType enum and check validity
+        let pdu_type = match payload[4] {
+            x if x == PDUType::L1LanHello as u8 => Some(PDUType::L1LanHello),
+            x if x == PDUType::L2LanHello as u8 => Some(PDUType::L2LanHello),
+            x if x == PDUType::P2PHello   as u8 => Some(PDUType::P2PHello),
+            _ => None
+        };
+
         match pdu_type {
-            15 => info!("Received L1 LAN Hello"),
-            16 => info!("Received L2 LAN Hello"),
-            17 => info!("Received P2P Hello"),
-            _ => {
+            Some(PDUType::L1LanHello) => info!("Received L1 LAN Hello"),
+            Some(PDUType::L2LanHello) => info!("Received L2 LAN Hello"),
+            Some(PDUType::P2PHello)   => info!("Received P2P Hello"),
+            None => {
                 error!("Not an ISIS Hello packet");
                 return false;
             }
         }
-    
-        let circuit_type = payload[8];
-        if ![1, 2, 3].contains(&circuit_type) {
+
+
+
+
+        // Convert the circuit type byte to CircuitType enum and check validity
+        let circuit_type = match payload[8] {
+            x if x == CircuitType::L1Only as u8 => Some(CircuitType::L1Only),
+            x if x == CircuitType::L2Only as u8 => Some(CircuitType::L2Only),
+            x if x == CircuitType::L1L2   as u8 => Some(CircuitType::L1L2),
+            _ => None
+        };
+
+        if circuit_type.is_none() {
             error!("Incorrect circuit type");
             return false;
         }
-    
-        debug!("Response verified successfully");
+
+        debug!("Response verified successfully with circuit type: {:?}", circuit_type.unwrap());
         true
+
+
     }
     
     pub fn run(&self, running: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
