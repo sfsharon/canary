@@ -395,10 +395,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     const MODE_UT: u8 = 1;
     const MODE_OPERATIONAL: u8 = 2;
-    let sim_mode = MODE_UT;
+    // let sim_mode = MODE_UT;
+    let sim_mode = MODE_OPERATIONAL;
 
     let config = ISISConfig {
-        interface: "enp4s0f1".to_string(),
+        interface: "eth0".to_string(),
         router_ip: "5.6.7.9".to_string(),
         net: "49.0972.0007.0100.0004.00".to_string(),
         hello_interval: Duration::from_secs(HELLO_INTERVAL_SECS),
