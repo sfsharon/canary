@@ -281,8 +281,7 @@ impl ISISNeighborSimulator {
             error!("ISIS payload too short");
             return false;
         }
-    
-    
+      
         // Convert the PDU type byte to PDUType enum and check validity
         let pdu_type = match payload[4] {
             x if x == PDUType::L1LanHello as u8 => Some(PDUType::L1LanHello),
@@ -300,9 +299,6 @@ impl ISISNeighborSimulator {
                 return false;
             }
         }
-
-
-
 
         // Convert the circuit type byte to CircuitType enum and check validity
         let circuit_type = match payload[8] {
