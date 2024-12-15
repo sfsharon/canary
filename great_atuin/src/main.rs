@@ -395,8 +395,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sim_mode = MODE_OPERATIONAL;
 
     let config = ISISConfig {
-        interface: "x-etr28".to_string(),
-        router_ip: "5.6.7.9".to_string(),
+        interface: "enp3s0f0".to_string(),
+        router_ip: "1.2.3.5".to_string(),
         net: "49.0972.0007.0100.0004.00".to_string(),
         hello_interval: Duration::from_secs(HELLO_INTERVAL_SECS),
         capture_timeout: CAPTURE_TIMEOUT_MS,

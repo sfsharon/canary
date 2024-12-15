@@ -1,5 +1,5 @@
 """
-SCP a file from local machine to remote router through a proxy machine, using credentials in the config.yaml file
+Transfer files to/from remote router through a proxy machine, using credentials in the config.yaml file
 """
 import paramiko
 import yaml
@@ -16,7 +16,7 @@ class ProxySCP:
             self.config = yaml.safe_load(f)
                 
         # Setup logging
-        # -------------
+        # ---------------------------------
 
         # Lower Paramiko's log verbosity, so that info logs from sftp.py or transport.py will be suppressed
         logging.getLogger("paramiko").setLevel(logging.WARNING)
@@ -39,11 +39,11 @@ class ProxySCP:
         # Set default timeouts if not in config
         if 'timeouts' not in self.config:
             self.config['timeouts'] = {
-                'connection': 30,  # Default 30 seconds for connection
-                'command': 180,    # Default 180 seconds for commands
-                'commit': 600      # Default 600 seconds for commits
+                'connection': 30,
+                'command': 180,
+                'commit': 600
             }
-            self.logger.info("Using default timeout values: %s", self.config['timeouts'])
+            self.logger.debug("Using default timeout values: %s", self.config['timeouts'])
 
         # Initialize SSH clients
         self.proxy_client = paramiko.SSHClient()
@@ -93,29 +93,53 @@ class ProxySCP:
             self.close()
             return False
 
-    def transfer_file(self, local_path, remote_path):
-        """Transfer file from local machine to router through proxy."""
+    def upload_file(self, local_path, remote_path):
+        """Upload file from local machine to router through proxy."""
         try:
             if not os.path.exists(local_path):
                 self.logger.error("Local file does not exist: %s", local_path)
                 return False
                 
-            self.logger.info("Opening SFTP, and starting file transfer: %s -> %s", local_path, remote_path)
-            
-            # Create SFTP session through the proxy connection
+            self.logger.info("Opening SFTP for upload: %s -> %s", local_path, remote_path)
             sftp = self.router_client.open_sftp()
             
-            self.logger.info("Put file")
-
             # Transfer the file
             sftp.put(local_path, remote_path)
             
-            self.logger.info("Successfully transferred file")
+            self.logger.info("Successfully uploaded file")
             sftp.close()
             return True
             
         except Exception as e:
-            self.logger.error("File transfer failed: %s", str(e))
+            self.logger.error("File upload failed: %s", str(e))
+            return False
+
+    def download_file(self, remote_path, local_path):
+        """Download file from router to local machine through proxy."""
+        try:
+            self.logger.info("Opening SFTP for download: %s -> %s", remote_path, local_path)
+            sftp = self.router_client.open_sftp()
+            
+            # Check if remote file exists by trying to get its attributes
+            try:
+                sftp.stat(remote_path)
+            except FileNotFoundError:
+                self.logger.error("Remote file does not exist: %s", remote_path)
+                sftp.close()
+                return False
+            
+            # Create local directory if it doesn't exist
+            os.makedirs(os.path.dirname(os.path.abspath(local_path)), exist_ok=True)
+            
+            # Transfer the file
+            sftp.get(remote_path, local_path)
+            
+            self.logger.info("Successfully downloaded file")
+            sftp.close()
+            return True
+            
+        except Exception as e:
+            self.logger.error("File download failed: %s", str(e))
             return False
 
     def close(self):
@@ -125,16 +149,17 @@ class ProxySCP:
         self.proxy_client.close()
 
 def main():
-    parser = argparse.ArgumentParser(description='Transfer files through proxy to router')
-    parser.add_argument('source', help='Source file path on local machine')
-    parser.add_argument('destination', help='Destination file path on router')
+    parser = argparse.ArgumentParser(description='Transfer files through proxy to/from router')
+    parser.add_argument('operation', choices=['upload', 'download'], 
+                      help='Operation to perform: upload (local->router) or download (router->local)')
+    parser.add_argument('source', help='Source file path')
+    parser.add_argument('destination', help='Destination file path')
     parser.add_argument('--config', default='config.yaml', 
                       help='Path to YAML config file (default: config.yaml)')
     
     args = parser.parse_args()
     
     # Resolve paths
-    source_path = os.path.abspath(args.source)
     config_path = os.path.abspath(args.config)
     
     # Create ProxySCP instance
@@ -143,7 +168,12 @@ def main():
     # Attempt connection and file transfer
     success = False
     if proxy_scp.connect():
-        success = proxy_scp.transfer_file(source_path, args.destination)
+        if args.operation == 'upload':
+            source_path = os.path.abspath(args.source)
+            success = proxy_scp.upload_file(source_path, args.destination)
+        else:  # download
+            dest_path = os.path.abspath(args.destination)
+            success = proxy_scp.download_file(args.source, dest_path)
     
     # Clean up
     proxy_scp.close()
@@ -153,4 +183,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
