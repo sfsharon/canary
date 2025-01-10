@@ -41,7 +41,7 @@ def generate_isis_hello():
         sourceid    = '0701.0000.0003',
         holdingtime = 30,
         priority    = 64,
-        lanid       = '0007.0100.0003.06',
+        lanid       = '0007.0100.0003.00',
     )
     isis_hello.pdulength = 0 
     isis_hello.hdrlen = len(isis_hello)  # Calculate header length
@@ -49,9 +49,9 @@ def generate_isis_hello():
     # Add TLVs
     tlvs = [
         ISIS_RestartSignalTlv       (flags=0x00),
-        ISIS_ProtocolsSupportedTlv  (nlpids=[0xcc, 0x8e]),
-        ISIS_AreaTlv                (areas=['01.0000.0003']),
-        ISIS_IpInterfaceAddressTlv  (addresses=['49.9.72.84']),
+        ISIS_ProtocolsSupportedTlv  (nlpids=[0xcc]),
+        ISIS_AreaTlv                (areas=['49.0972']),
+        # ISIS_IpInterfaceAddressTlv  (addresses=['49.9.72.84']),
         ISIS_PaddingTlv             (padding=b'\x00' * 240)
     ]
 
@@ -62,6 +62,16 @@ def generate_isis_hello():
 
     # Combine all layers
     packet = eth / llc / isis_hello
+
+# routing isis 1
+#  is-type               level-2-only
+#  net 49.0972.0007.0100.0003.00
+#  log-adjacency-changes enable
+#  ldp-synchronization   disable
+#  overload-bit unset
+#  level-2
+#   metric-style wide
+#  !
 
     return packet
 
