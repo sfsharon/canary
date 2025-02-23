@@ -27,7 +27,10 @@ from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, UDP
 from scapy.layers.dhcp import DHCP, BOOTP
 from scapy.utils import mac2str
-from scapy.all import RandInt
+from scapy.all import RandInt, sendp
+
+# Define the network interface
+interface = "enp3s0f1"
 
 # Define the client MAC address (random or real)
 client_mac = "00:11:22:33:44:55"
@@ -75,20 +78,29 @@ dhcp_ack = Ether(dst=client_mac, src="aa:bb:cc:dd:ee:ff") / \
            DHCP(options=[("message-type", "ack"), ("server_id", server_ip), ("yiaddr", offered_ip), "end"])
 
 
-# Print packets for verification
-print("[*] DHCP DISCOVER Packet:")
-# Translate frame to bytes
-frame_bytes = bytes(dhcp_discover).hex()
-print(frame_bytes)
+# # Print packets for verification
+# print("[*] DHCP DISCOVER Packet:")
+# # Translate frame to bytes
+# frame_bytes = bytes(dhcp_discover).hex()
+# print(frame_bytes)
 
-print("\n[*] DHCP OFFER Packet:")
-frame_bytes = bytes(dhcp_offer).hex()
-print(frame_bytes)
+# print("\n[*] DHCP OFFER Packet:")
+# frame_bytes = bytes(dhcp_offer).hex()
+# print(frame_bytes)
 
-print("\n[*] DHCP REQUEST Packet:")
-frame_bytes = bytes(dhcp_request).hex()
-print(frame_bytes)
+# print("\n[*] DHCP REQUEST Packet:")
+# frame_bytes = bytes(dhcp_request).hex()
+# print(frame_bytes)
 
-print("\n[*] DHCP ACK Packet:")
-frame_bytes = bytes(dhcp_ack).hex()
-print(frame_bytes)
+# print("\n[*] DHCP ACK Packet:")
+# frame_bytes = bytes(dhcp_ack).hex()
+# print(frame_bytes)
+
+# Send 10 DHCP Discover packets
+print("[*] Sending 10 DHCP Discover packets on", interface)
+for i in range(10):
+    # dhcp_discover = create_dhcp_discover()
+    sendp(dhcp_discover, iface=interface, verbose=True)
+    print(f"[*] Packet {i+1} sent.")
+
+print("[*] Finished sending packets.")
