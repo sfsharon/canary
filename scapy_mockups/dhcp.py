@@ -2,6 +2,9 @@
 Create DORA DHCP frames.
 Result :
 
+[*] DHCP6 SOLICIT Packet:
+33330001000200155d3e96cd86dd60000000002e1140fe80000000000000020c29fffeabcdefff02000000000000000000000001000202220223002e5e19011234560001000e00010001293d5099000c29abcdef0003000c000000010000000000000000
+
 sharonf@DESKTOP-NJLVCVF:~/workspace/canary/scapy_mockups(main)$ python3 dhcp.py
 [*] DHCP DISCOVER Packet:
 Tx 10 PSRC=31 DATA=ffffffffffff00112233445508004500011000010000401179dd00000000ffffffff0044004300fc117c0101060051653f0e00000000000000000000000000000000000000000011223344550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000063825363350101ff
@@ -22,15 +25,28 @@ Tx 1 PSRC=5 DATA=001122334455aabbccddeeff080045000116000100004011b82dc0a80101fff
 - From Hex packet Decoder : 192.168.1.1 → 255.255.255.255 DHCP DHCP ACK - Transaction ID 0xea518b40
 
 """
-
+# General Imports
 from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, UDP
-from scapy.layers.dhcp import DHCP, BOOTP
 from scapy.utils import mac2str
+# from scapy.all import RandMAC
 from scapy.all import RandInt, sendp
+
+# DHCP IPv4
+from scapy.layers.dhcp import DHCP, BOOTP
+
+# DHCP IPv6
+from scapy.layers.inet6 import IPv6
+from scapy.layers.dhcp6 import DHCP6_Solicit, DHCP6OptClientId, DHCP6OptIA_NA
+
 
 # Define the network interface
 interface = "enp3s0f1"
+
+
+# =============================================
+# DHCPIPv4
+# =============================================
 
 # Define the client MAC address (random or real)
 client_mac = "00:11:22:33:44:55"
@@ -78,6 +94,37 @@ dhcp_ack = Ether(dst=client_mac, src="aa:bb:cc:dd:ee:ff") / \
            DHCP(options=[("message-type", "ack"), ("server_id", server_ip), ("yiaddr", offered_ip), "end"])
 
 
+
+# =============================================
+# DHCPIPv6
+# =============================================
+# Define the destination multicast address for DHCPv6 agents
+DHCPV6_MULTICAST = "ff02::1:2"
+
+DHCPV6_MULTICAST = "ff02::1:2"                  # DHCPv6 All Servers multicast address
+CLIENT_MAC       = "00:0c:29:ab:cd:ef"          # Hardcoded MAC address
+CLIENT_IPV6      = "fe80::20c:29ff:feab:cdef"   # Link-local address derived from MAC
+CLIENT_DUID      = b"\x00\x01\x00\x01\x29\x3D\x50\x99\x00\x0C\x29\xAB\xCD\xEF"  # Example DUID
+
+# Create the DHCPv6 Solicit packet
+dhcp6_solicit = (
+    Ether(dst="33:33:00:01:00:02")          # Multicast MAC for ff02::1:2
+    / IPv6(dst=DHCPV6_MULTICAST, src=CLIENT_IPV6)
+    / UDP(sport=546, dport=547)
+    / DHCP6_Solicit(trid=0x123456)          # Hardcoded Transaction ID
+    / DHCP6OptClientId(duid=CLIENT_DUID)    # Hardcoded Client Identifier (DUID)
+    / DHCP6OptIA_NA(iaid=1, T1=0, T2=0)     # Request IPv6 address
+)
+
+# =============================================
+# Operate frames
+# =============================================
+# Print packets for verification
+print("[*] DHCP6 SOLICIT Packet:")
+# Translate frame to bytes
+frame_bytes = bytes(dhcp6_solicit).hex()
+print(frame_bytes)
+
 # # Print packets for verification
 # print("[*] DHCP DISCOVER Packet:")
 # # Translate frame to bytes
@@ -97,10 +144,9 @@ dhcp_ack = Ether(dst=client_mac, src="aa:bb:cc:dd:ee:ff") / \
 # print(frame_bytes)
 
 # Send 10 DHCP Discover packets
-print("[*] Sending 10 DHCP Discover packets on", interface)
-for i in range(10):
-    # dhcp_discover = create_dhcp_discover()
-    sendp(dhcp_discover, iface=interface, verbose=True)
-    print(f"[*] Packet {i+1} sent.")
-
-print("[*] Finished sending packets.")
+# print("[*] Sending 10 DHCP Discover packets on", interface)
+# for i in range(10):
+#     # dhcp_discover = create_dhcp_discover()
+#     sendp(dhcp_discover, iface=interface, verbose=True)
+#     print(f"[*] Packet {i+1} sent.")
+# print("[*] Finished sending packets.")
