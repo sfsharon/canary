@@ -33,7 +33,7 @@
 
 */
 
-use pcap::{Device, Capture};
+use pcap::{Device, Capture, Active};
 use std::env;
 use std::process;
 
@@ -73,6 +73,20 @@ fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(bytes)
 }
 
+fn frame_send(frame: &str, pkt_cap_handle: &mut Capture<Active>) -> Result<(), Box<dyn std::error::Error>> {
+    
+    // Convert hex string to bytes
+    let frame_bytes = hex_to_bytes(frame)?;
+    
+    // Send the frame
+    println!("Sending {} bytes", frame_bytes.len());
+    pkt_cap_handle.sendpacket(frame_bytes)?;
+    println!("Frame sent successfully");
+    
+    Ok(())
+
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
@@ -97,26 +111,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             process::exit(1);
         }
     };
-    
-    println!("Using network interface: {}", device.name);
-    
-    // Convert hex string to bytes
-    let frame_bytes = hex_to_bytes(hex_frame)?;
-    
+
     // Create a packet capture handle on the device
     let mut cap = Capture::from_device(device)?
-        .promisc(true)
-        .snaplen(65535)
-        .timeout(0)
-        .open()?
-        .setnonblock()?;
+    .promisc(true)
+    .snaplen(65535)
+    .timeout(0)
+    .open()?
+    .setnonblock()?;
     
-    // Send the frame
-    println!("Sending {} bytes on {}...", frame_bytes.len(), interface_name);
-    cap.sendpacket(frame_bytes)?;
-    println!("Frame sent successfully");
-    
+
+    let _ = frame_send(hex_frame, &mut cap);
+
     Ok(())
+
 }
 
 
