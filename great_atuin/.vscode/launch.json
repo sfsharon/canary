@@ -1,40 +1,39 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'isis-neighbor-simulator'",
+            "name": "Debug executable 'frame_sender'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=isis-neighbor-simulator",
-                    "--package=isis-neighbor-simulator"
+                    "--bin=frame_sender",
+                    "--package=frame_sender",
+                    "--target=x86_64-unknown-linux-musl"
                 ],
                 "filter": {
-                    "name": "isis-neighbor-simulator",
+                    "name": "frame_sender",
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": ["eth0", "ffffffffffff22334455667708004500011000010000401179dd00000000ffffffff0044004300fc117c0101060051653f0e00000000000000000000000000000000000000000011223344550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000063825363350101ff"],
             "cwd": "${workspaceFolder}",
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'isis-neighbor-simulator'",
+            "name": "Debug unit tests in executable 'frame_sender'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=isis-neighbor-simulator",
-                    "--package=isis-neighbor-simulator"
+                    "--bin=frame_sender",
+                    "--package=frame_sender",
+                    "--target=x86_64-unknown-linux-musl"
                 ],
                 "filter": {
-                    "name": "isis-neighbor-simulator",
+                    "name": "frame_sender",
                     "kind": "bin"
                 }
             },
